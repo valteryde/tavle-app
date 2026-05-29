@@ -8,25 +8,23 @@ import {
   createBoard,
   createGroup,
   deleteBoard,
-  importAdminTokenFromTavle,
-  stopTavle,
+  getStatus,
   listBoardLinks,
   listGroups,
   moveBoard,
-  startTavle,
   syncBoardsFromApi,
-  tavleNeedsSetup,
   touchBoardOpened,
   updateBoardMeta,
-} from "./lib/tauri";
-import type { BoardLink, Group, TavleStatus } from "./types";
+} from "./lib/api";
+import type { AppStatus } from "./lib/api";
+import type { BoardLink, Group } from "./types";
 
 type AppPhase = "loading" | "error" | "setup" | "ready";
 
 function App() {
   const [phase, setPhase] = useState<AppPhase>("loading");
   const [error, setError] = useState("");
-  const [status, setStatus] = useState<TavleStatus | null>(null);
+  const [status, setStatus] = useState<AppStatus | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [boards, setBoards] = useState<BoardLink[]>([]);
   const [selectedBoard, setSelectedBoard] = useState<BoardLink | null>(null);
@@ -43,17 +41,16 @@ function App() {
     setPhase("loading");
     setError("");
     try {
-      try {
-        await stopTavle();
-      } catch {
-        /* not running */
-      }
-      await importAdminTokenFromTavle();
-      const st = await startTavle();
+      const st = await getStatus();
       setStatus(st);
 
-      const needsSetup = await tavleNeedsSetup();
-      if (needsSetup) {
+      if (!st.tavle_healthy) {
+        throw new Error(
+          "Tavle is not reachable. Run: docker compose up --build",
+        );
+      }
+
+      if (st.needs_setup) {
         setPhase("setup");
         return;
       }
@@ -72,23 +69,7 @@ function App() {
   }, [bootstrap]);
 
   async function handleSetupComplete() {
-    setPhase("loading");
-    setError("");
-    try {
-      try {
-        await stopTavle();
-      } catch {
-        /* not running */
-      }
-      const st = await startTavle();
-      setStatus(st);
-      await syncBoardsFromApi();
-      await refreshLibrary();
-      setPhase("ready");
-    } catch (e) {
-      setError(String(e));
-      setPhase("setup");
-    }
+    await bootstrap();
   }
 
   async function handleCreateBoard() {
@@ -130,8 +111,7 @@ function App() {
   if (phase === "loading") {
     return (
       <div className="app-shell center">
-        <p>Downloading Tavle (first run) or starting server…</p>
-        <p className="loading-hint">Source is fetched from GitHub into app data, not bundled in the app.</p>
+        <p>Connecting to Tavle…</p>
       </div>
     );
   }
@@ -150,7 +130,7 @@ function App() {
   if (phase === "setup" && status) {
     return (
       <div className="app-shell setup-shell">
-        <SetupView baseUrl={status.base_url} onComplete={handleSetupComplete} />
+        <SetupView onComplete={handleSetupComplete} />
         {error && <p className="error-banner">{error}</p>}
       </div>
     );
@@ -161,7 +141,7 @@ function App() {
       <header className="topbar">
         <h1 className="app-title">Tavle App</h1>
         <span className="status-pill">
-          {status?.running ? status.base_url : "Offline"}
+          {status?.tavle_healthy ? status.tavle_public_url : "Offline"}
         </span>
         <button
           type="button"
@@ -193,7 +173,7 @@ function App() {
         <main className="main-panel">
           {selectedBoard?.access_token && status ? (
             <BoardFrame
-              baseUrl={status.base_url}
+              baseUrl={status.tavle_public_url}
               accessToken={selectedBoard.access_token}
             />
           ) : (
@@ -207,9 +187,7 @@ function App() {
       <SettingsModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        onTokenSaved={async () => {
-          await bootstrap();
-        }}
+        onRefresh={bootstrap}
       />
     </div>
   );

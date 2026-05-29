@@ -1,0 +1,26 @@
+# Dev overrides: Flask debug server for Tavle, hot-reload portal API
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+services:
+  tavle:
+    build:
+      context: .
+      dockerfile: docker/tavle.dev.Dockerfile
+    command: ["python", "server.py"]
+    environment:
+      FLASK_ENV: development
+      DATABASE_URL: ""
+      WHITEBOARD_DATA_DIR: /data/tavle
+      TAVLE_HOST: 0.0.0.0
+      LOG_LEVEL: DEBUG
+    volumes:
+      - tavle-sqlite:/data/tavle
+
+  portal:
+    volumes:
+      - ./backend:/app/backend:ro
+      - portal-data:/data
+
+volumes:
+  tavle-sqlite:

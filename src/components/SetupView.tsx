@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { completeTavleSetup, fetchSetupToken } from "../lib/tauri";
+import { completeSetup, fetchSetupToken } from "../lib/api";
 
 interface SetupViewProps {
-  baseUrl: string;
   onComplete: () => void;
 }
 
-export function SetupView({ baseUrl, onComplete }: SetupViewProps) {
+export function SetupView({ onComplete }: SetupViewProps) {
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -18,14 +17,14 @@ export function SetupView({ baseUrl, onComplete }: SetupViewProps) {
     setLoading(true);
     setError("");
     try {
-      const t = await fetchSetupToken(baseUrl);
+      const t = await fetchSetupToken();
       setToken(t);
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [baseUrl]);
+  }, []);
 
   useEffect(() => {
     loadToken();
@@ -47,7 +46,7 @@ export function SetupView({ baseUrl, onComplete }: SetupViewProps) {
     setSubmitting(true);
     setError("");
     try {
-      await completeTavleSetup(baseUrl, token);
+      await completeSetup(token);
       onComplete();
     } catch (e) {
       setError(String(e));
@@ -61,8 +60,9 @@ export function SetupView({ baseUrl, onComplete }: SetupViewProps) {
       <div className="setup-panel setup-panel-wide">
         <h2>First-time Tavle setup</h2>
         <p>
-          Save your admin API token below. Tavle App uses it to list and create
-          boards. The token is stored in your system keychain.
+          Save your admin API token. The portal stores it in its database and uses
+          it to manage boards. You can also set <code>ADMIN_API_TOKEN</code> in{" "}
+          <code>.env</code> before starting Docker.
         </p>
 
         {loading && <p className="setup-status">Loading token from Tavle…</p>}
@@ -96,8 +96,7 @@ export function SetupView({ baseUrl, onComplete }: SetupViewProps) {
 
             <ul className="setup-security-list">
               <li>Store this token somewhere safe — it grants full API access.</li>
-              <li>Do not share it or commit it to git.</li>
-              <li>You can paste it again later in Settings if needed.</li>
+              <li>Add it to <code>.env</code> as <code>ADMIN_API_TOKEN=…</code> for restarts.</li>
             </ul>
 
             <label className="setup-confirm">
