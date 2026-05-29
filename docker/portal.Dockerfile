@@ -20,7 +20,8 @@ COPY backend ./backend
 COPY schemas ./schemas
 COPY --from=frontend /app/dist ./static
 
-ENV STATIC_DIR=/app/static \
+ENV PYTHONPATH=/app \
+    STATIC_DIR=/app/static \
     METADATA_DB_PATH=/data/metadata.db \
     TAVLE_INTERNAL_URL=http://tavle:5050 \
     TAVLE_PUBLIC_URL=http://localhost:5050

@@ -7,13 +7,19 @@ on:
     branches: [master]
 
 jobs:
-  portal-image:
+  docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build portal image
-        run: docker build -f docker/portal.Dockerfile -t tavle-app-portal .
+      - name: Build images
+        run: |
+          docker build -f docker/portal.Dockerfile -t tavle-app-portal .
+          docker build -f docker/tavle.Dockerfile -t tavle-app-tavle .
 
-      - name: Build tavle image
-        run: docker build -f docker/tavle.Dockerfile -t tavle-app-tavle .
+      - name: Verify portal imports
+        run: |
+          docker run --rm tavle-app-portal python -c "from backend.main import app; print('portal ok')"
+
+      - name: Validate compose file
+        run: docker compose config

@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from metadata_db import (
+from backend.metadata_db import (
     connect,
     create_group,
     delete_group,
@@ -24,7 +24,7 @@ from metadata_db import (
     update_board_meta,
     upsert_board_link,
 )
-from tavle_client import TavleClient
+from backend.tavle_client import TavleClient
 
 
 class Settings(BaseSettings):

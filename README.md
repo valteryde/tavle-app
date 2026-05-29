@@ -75,10 +75,6 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 - Embed boards with `?embed=1`
 - First-time setup in the portal UI
 
-## Legacy: Tauri desktop app
-
-The previous Tauri-based desktop wrapper is still in `src-tauri/` but is **deprecated**. Use Docker Compose instead.
-
 ## License
 
 Wrapper: project default. Tavle: upstream repository.

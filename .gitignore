@@ -1,32 +1,24 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
+# Dependencies & build
 node_modules
 dist
 dist-ssr
+
+# Environment
+.env
+.env.local
 *.local
 
-# Editor directories and files
+# Logs & OS
+logs
+*.log
+npm-debug.log*
+.DS_Store
+.idea
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
 
-# Optional local Tavle clone for dev (lazy-loaded in production)
+# Optional local Tavle checkout
 /vendor/tavle/
 
-# Non-square source from image gen; use app-icon-square.png for `npm run icon`
+# Generated icon source (keep app-icon-square.png in repo)
 /app-icon.png
-/src-tauri/binaries/tavle-server
-/src-tauri/binaries/tavle-server.exe
