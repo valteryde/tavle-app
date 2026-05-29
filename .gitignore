@@ -25,5 +25,8 @@ dist-ssr
 
 # Optional local Tavle clone for dev (lazy-loaded in production)
 /vendor/tavle/
+
+# Non-square source from image gen; use app-icon-square.png for `npm run icon`
+/app-icon.png
 /src-tauri/binaries/tavle-server
 /src-tauri/binaries/tavle-server.exe

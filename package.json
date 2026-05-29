@@ -11,7 +11,8 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "setup:tavle": "test -d vendor/tavle || git clone --depth 1 https://github.com/Den-Frie-Digitale-Skole/tavle.git vendor/tavle; cd vendor/tavle && pip install Flask==3.0.0 Flask-SocketIO==5.3.6 Flask-RESTful==0.3.10 Flask-Limiter==3.5.0 peewee==3.17.0 eventlet==0.34.2 python-socketio==5.10.0 requests==2.31.0 Pillow==10.4.0",
-    "build:sidecar": "bash scripts/build-tavle-sidecar.sh"
+    "build:sidecar": "bash scripts/build-tavle-sidecar.sh",
+    "icon": "tauri icon app-icon-square.png -o src-tauri/icons"
   },
   "dependencies": {
     "react": "^19.1.0",

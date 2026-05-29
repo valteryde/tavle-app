@@ -52,6 +52,14 @@ First launch downloads `Den-Frie-Digitale-Skole/tavle@main` from GitHub, applies
 - **Board sync** — `GET /api/boards` with admin token
 - **Embed** — boards open with `?embed=1`
 
+## App icon
+
+Source: [`app-icon-square.png`](app-icon-square.png). Regenerate platform icons:
+
+```bash
+npm run icon
+```
+
 ## Production build
 
 ```bash
