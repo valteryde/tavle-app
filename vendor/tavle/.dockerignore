@@ -1,0 +1,71 @@
+# =============================================================================
+# Docker Ignore - Collaborative Whiteboard
+# =============================================================================
+# Files and directories to exclude from Docker build context
+# This speeds up builds and keeps the image clean
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Environment files (secrets!)
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+tests/
+
+# Documentation (not needed in container)
+*.md
+!requirements.txt
+docs/
+
+# Logs (use volumes instead)
+logs/
+*.log
+
+# Database files (use volumes instead)
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker files (not needed inside container)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Misc
+*.bak
+*.tmp
+*.temp
+.cache/

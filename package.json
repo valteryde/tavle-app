@@ -1,0 +1,30 @@
+{
+  "name": "tavle-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "setup:tavle": "cd vendor/tavle && pip install Flask==3.0.0 Flask-SocketIO==5.3.6 Flask-RESTful==0.3.10 Flask-Limiter==3.5.0 peewee==3.17.0 eventlet==0.34.2 python-socketio==5.10.0 requests==2.31.0 Pillow==10.4.0",
+    "build:sidecar": "bash scripts/build-tavle-sidecar.sh"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-opener": "^2"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4",
+    "@tauri-apps/cli": "^2"
+  }
+}

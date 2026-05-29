@@ -1,0 +1,597 @@
+/* Whiteboard CSS - Canvas & UI */
+/* Swiss + Playful Whiteboard Style */
+
+[x-cloak] {
+    display: none !important;
+}
+
+/* Percentage heights follow the iframe / tab viewport instead of 100vh (broken inside nested iframes). */
+html,
+body {
+    height: 100%;
+    margin: 0;
+}
+
+.whiteboard-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    background-color: #f5f5f0;
+    container-type: inline-size;
+    container-name: tavle-board;
+}
+
+.whiteboard-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+}
+
+.whiteboard-canvas--base {
+    z-index: 1;
+    background-color: #ffffff;
+}
+
+.whiteboard-canvas--active {
+    z-index: 2;
+    background-color: transparent;
+}
+
+.whiteboard-container[data-mode="draw"] .whiteboard-canvas--active { cursor: crosshair; }
+.whiteboard-container[data-mode="select"] .whiteboard-canvas--active { cursor: default; }
+.whiteboard-container[data-mode="pan"] .whiteboard-canvas--active { cursor: grab; }
+
+#tavle-root[data-mode="draw"] .whiteboard-canvas--active { cursor: crosshair; }
+#tavle-root[data-mode="select"] .whiteboard-canvas--active { cursor: default; }
+#tavle-root[data-mode="pan"] .whiteboard-canvas--active { cursor: grab; }
+
+.connection-status {
+    position: fixed;
+    bottom: 1rem;
+    left: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: #ffffff;
+    border: 2px solid #1e1e1e;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    z-index: 50;
+    transform: rotate(-1deg);
+}
+
+.connection-status__dot {
+    width: 10px;
+    height: 10px;
+}
+
+.connection-status--connected .connection-status__dot { background: #10b981; }
+.connection-status--disconnected .connection-status__dot { background: #ef4444; }
+
+.zoom-indicator {
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    padding: 0.5rem 1rem;
+    background: #ffffff;
+    border: 2px solid #1e1e1e;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #1e1e1e;
+    z-index: 50;
+    transform: rotate(1deg);
+}
+
+/*
+ * Toolbar layout + responsive behavior (all Tavle surfaces).
+ * Optional brand overlays via TAVLE_EXTRA_STYLESHEETS only change colors/tokens.
+ */
+
+#tavle-toolbar-host {
+    overflow: visible;
+}
+
+#tavle-toolbar-host .tavle-toolbar-inner {
+    overflow: visible;
+    align-items: center;
+    transform: none;
+}
+
+/* Consistent square hit targets (beat Tailwind w-8 / w-9 utilities) */
+#tavle-mode-draw,
+#tavle-mode-erase,
+#tavle-mode-select,
+#tavle-mode-pan,
+#tavle-stroke-color-trigger,
+#tavle-toolbar-stroke-width button,
+#tavle-toolbar-eraser-width button,
+#tavle-background-trigger,
+#tavle-grid-toggle,
+#tavle-zoom-out,
+#tavle-zoom-in,
+#tavle-action-upload,
+#tavle-action-export,
+#tavle-action-clear,
+#tavle-toolbar-more-trigger {
+    box-sizing: border-box !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+}
+
+#tavle-stroke-color-trigger {
+    align-self: center;
+    transform: none;
+    border-radius: 8px;
+}
+
+#tavle-toolbar-host .tavle-toolbar-inner button[style*="transform"] {
+    transform: none;
+}
+
+#tavle-zoom-reset {
+    width: auto;
+    min-width: 3rem;
+    height: 36px;
+    padding: 0 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Overflow “more” menu — secondary tools when the board is narrow (CSS only) */
+#tavle-toolbar-more-wrap {
+    display: none;
+}
+
+@container tavle-board (max-width: 1100px) {
+    #tavle-toolbar-divider-after-width,
+    #tavle-toolbar-secondary {
+        display: none;
+    }
+
+    #tavle-toolbar-more-wrap {
+        display: flex;
+    }
+}
+
+#tavle-toolbar-more-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    left: auto;
+    z-index: 70;
+    background: #fff;
+    border: 1px solid rgba(30, 30, 30, 0.12);
+    border-radius: 8px;
+    box-shadow: 0 6px 16px rgba(30, 30, 30, 0.12);
+}
+
+.tavle-toolbar-more-section-label {
+    margin: 0 0 0.35rem;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(30, 30, 30, 0.55);
+}
+
+/* Shrink-wrap centered toolbar — embed (?embed=1) and narrow standalone */
+body.tavle-embed #tavle-toolbar-host {
+    top: max(8px, env(safe-area-inset-top, 0px));
+    left: 50%;
+    right: auto;
+    width: max-content;
+    max-width: calc(100% - 16px);
+    transform: translateX(-50%);
+    translate: none;
+    display: block;
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner {
+    width: max-content;
+    max-width: 100%;
+    min-width: 0;
+    flex-wrap: nowrap;
+    border-width: 1px;
+    transform: none;
+    box-shadow: 0 6px 16px rgba(30, 30, 30, 0.12);
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner > * {
+    flex-shrink: 0;
+}
+
+@media (max-width: 1024px) {
+    body:not(.tavle-embed) #tavle-toolbar-host {
+        top: max(8px, env(safe-area-inset-top, 0px));
+        left: 50%;
+        right: auto;
+        width: max-content;
+        max-width: calc(100% - 16px);
+        transform: translateX(-50%);
+        translate: none;
+        display: block;
+        min-width: 0;
+    }
+
+    body:not(.tavle-embed) #tavle-toolbar-host .tavle-toolbar-inner {
+        width: max-content;
+        max-width: 100%;
+        min-width: 0;
+        flex-wrap: nowrap;
+    }
+
+    body:not(.tavle-embed) #tavle-toolbar-host .tavle-toolbar-inner > * {
+        flex-shrink: 0;
+    }
+}
+
+/* Compact toolbar — embed + tablet / small laptop */
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner {
+    gap: 4px;
+    padding: 2px 4px;
+}
+
+body.tavle-embed #tavle-toolbar-modes,
+body.tavle-embed #tavle-toolbar-stroke-color,
+body.tavle-embed #tavle-toolbar-stroke-width,
+body.tavle-embed #tavle-toolbar-eraser-width,
+body.tavle-embed #tavle-toolbar-canvas-options,
+body.tavle-embed #tavle-toolbar-zoom,
+body.tavle-embed #tavle-toolbar-actions {
+    gap: 4px;
+    padding-left: 2px;
+    padding-right: 2px;
+}
+
+body.tavle-embed #tavle-mode-draw,
+body.tavle-embed #tavle-mode-erase,
+body.tavle-embed #tavle-mode-select,
+body.tavle-embed #tavle-mode-pan,
+body.tavle-embed #tavle-stroke-color-trigger,
+body.tavle-embed #tavle-toolbar-stroke-width button,
+body.tavle-embed #tavle-toolbar-eraser-width button,
+body.tavle-embed #tavle-background-trigger,
+body.tavle-embed #tavle-grid-toggle,
+body.tavle-embed #tavle-zoom-out,
+body.tavle-embed #tavle-zoom-in,
+body.tavle-embed #tavle-action-upload,
+body.tavle-embed #tavle-action-export,
+body.tavle-embed #tavle-action-clear,
+body.tavle-embed #tavle-toolbar-more-trigger {
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    min-height: 30px;
+}
+
+body.tavle-embed #tavle-zoom-reset {
+    min-width: 2.5rem;
+    height: 30px;
+    padding: 0 6px;
+    font-size: 0.65rem;
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-divider {
+    height: 1.375rem !important;
+    margin-left: 0.25rem !important;
+    margin-right: 0.25rem !important;
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner :is(.ph, .ph-thin) {
+    font-size: 1.05rem !important;
+    line-height: 1;
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner :is(.ph, .ph-thin).text-xl {
+    font-size: 1.05rem !important;
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner :is(.ph, .ph-thin).text-lg {
+    font-size: 0.95rem !important;
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner button {
+    border-width: 1px !important;
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner .p-2\.5 {
+    padding: 0.35rem !important;
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner .p-2 {
+    padding: 0.3rem !important;
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner .px-2 {
+    padding-left: 0.375rem !important;
+    padding-right: 0.375rem !important;
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner .py-1\.5 {
+    padding-top: 0.25rem !important;
+    padding-bottom: 0.25rem !important;
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner .gap-0\.5 {
+    gap: 0.125rem !important;
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner .gap-1 {
+    gap: 0.25rem !important;
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner .w-9 {
+    width: 2rem !important;
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner .h-9 {
+    height: 2rem !important;
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner .w-8 {
+    width: 1.75rem !important;
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner .h-8 {
+    height: 1.75rem !important;
+}
+
+body.tavle-embed #tavle-toolbar-host .tavle-toolbar-inner .tavle-toolbar-zoom-readout {
+    min-width: 2.5rem !important;
+    padding: 0.2rem 0.25rem !important;
+    font-size: 0.65rem !important;
+}
+
+@media (max-width: 1366px) {
+    #tavle-toolbar-host {
+        top: max(8px, env(safe-area-inset-top, 0px)) !important;
+        left: 50% !important;
+        right: auto !important;
+        transform: translateX(-50%) !important;
+        width: max-content !important;
+        max-width: calc(100% - 16px);
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-inner {
+        gap: 4px;
+        padding: 2px 4px;
+        border-width: 1px !important;
+        transform: none !important;
+        box-shadow: 0 6px 16px rgba(30, 30, 30, 0.12);
+    }
+
+    #tavle-toolbar-modes,
+    #tavle-toolbar-stroke-color,
+    #tavle-toolbar-stroke-width,
+    #tavle-toolbar-eraser-width,
+    #tavle-toolbar-canvas-options,
+    #tavle-toolbar-zoom,
+    #tavle-toolbar-actions {
+        gap: 4px;
+        padding-left: 2px;
+        padding-right: 2px;
+    }
+
+    #tavle-mode-draw,
+    #tavle-mode-erase,
+    #tavle-mode-select,
+    #tavle-mode-pan,
+    #tavle-stroke-color-trigger,
+    #tavle-toolbar-stroke-width button,
+    #tavle-toolbar-eraser-width button,
+    #tavle-background-trigger,
+    #tavle-grid-toggle,
+    #tavle-zoom-out,
+    #tavle-zoom-in,
+    #tavle-action-upload,
+    #tavle-action-export,
+    #tavle-action-clear,
+    #tavle-toolbar-more-trigger {
+        width: 30px;
+        height: 30px;
+        min-width: 30px;
+        min-height: 30px;
+    }
+
+    #tavle-zoom-reset {
+        min-width: 2.5rem;
+        height: 30px;
+        padding: 0 6px;
+        font-size: 0.65rem;
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-divider {
+        height: 1.375rem !important;
+        margin-left: 0.25rem !important;
+        margin-right: 0.25rem !important;
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-inner :is(.ph, .ph-thin) {
+        font-size: 1.05rem !important;
+        line-height: 1;
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-inner :is(.ph, .ph-thin).text-xl {
+        font-size: 1.05rem !important;
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-inner :is(.ph, .ph-thin).text-lg {
+        font-size: 0.95rem !important;
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-inner button {
+        border-width: 1px !important;
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-inner .p-2\.5 {
+        padding: 0.35rem !important;
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-inner .p-2 {
+        padding: 0.3rem !important;
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-inner .px-2 {
+        padding-left: 0.375rem !important;
+        padding-right: 0.375rem !important;
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-inner .py-1\.5 {
+        padding-top: 0.25rem !important;
+        padding-bottom: 0.25rem !important;
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-inner .gap-0\.5 {
+        gap: 0.125rem !important;
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-inner .gap-1 {
+        gap: 0.25rem !important;
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-inner .w-9 {
+        width: 2rem !important;
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-inner .h-9 {
+        height: 2rem !important;
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-inner .w-8 {
+        width: 1.75rem !important;
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-inner .h-8 {
+        height: 1.75rem !important;
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-inner .tavle-toolbar-zoom-readout {
+        min-width: 2.5rem !important;
+        padding: 0.2rem 0.25rem !important;
+        font-size: 0.65rem !important;
+    }
+}
+
+/* Phone / very narrow */
+@media (max-width: 640px) {
+    #tavle-toolbar-host .tavle-toolbar-inner {
+        gap: 2px;
+        padding: 2px 3px;
+    }
+
+    #tavle-toolbar-modes,
+    #tavle-toolbar-stroke-color,
+    #tavle-toolbar-stroke-width,
+    #tavle-toolbar-eraser-width,
+    #tavle-toolbar-canvas-options,
+    #tavle-toolbar-zoom,
+    #tavle-toolbar-actions {
+        gap: 2px;
+        padding-left: 1px;
+        padding-right: 1px;
+    }
+
+    #tavle-mode-draw,
+    #tavle-mode-erase,
+    #tavle-mode-select,
+    #tavle-mode-pan,
+    #tavle-stroke-color-trigger,
+    #tavle-toolbar-stroke-width button,
+    #tavle-toolbar-eraser-width button,
+    #tavle-background-trigger,
+    #tavle-grid-toggle,
+    #tavle-zoom-out,
+    #tavle-zoom-in,
+    #tavle-action-upload,
+    #tavle-action-export,
+    #tavle-action-clear,
+    #tavle-toolbar-more-trigger {
+        width: 28px;
+        height: 28px;
+        min-width: 28px;
+        min-height: 28px;
+    }
+
+    #tavle-zoom-reset {
+        min-width: 2.25rem;
+        height: 28px;
+        padding: 0 4px;
+        font-size: 0.625rem;
+    }
+
+    #tavle-toolbar-host .tavle-toolbar-inner button :is(.ph, .ph-thin) {
+        font-size: 1rem;
+    }
+
+    #tavle-stroke-width-1,
+    #tavle-stroke-width-16,
+    #tavle-eraser-width-10,
+    #tavle-eraser-width-80 {
+        display: none;
+    }
+
+    #tavle-toolbar-divider-after-stroke-color,
+    #tavle-toolbar-divider-after-canvas-options {
+        margin-left: 0;
+        margin-right: 0;
+    }
+}
+
+/* No HUD (?nohud=1): live gallery tiles — canvas only */
+body.tavle-nohud #tavle-toolbar-host,
+body.tavle-nohud #tavle-connection-wrap,
+body.tavle-nohud #tavle-user-panel-wrap {
+    display: none !important;
+}
+
+/* Embed / gallery: no document scroll inside the iframe */
+body.tavle-embed,
+body.tavle-nohud,
+body.tavle-view-only {
+    overflow: hidden;
+}
+
+body.tavle-embed .whiteboard-container,
+body.tavle-nohud .whiteboard-container {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+}
+
+/* Read-only watch (?readonly=1): pan/zoom only, no drawing */
+body.tavle-view-only .whiteboard-canvas--active,
+body.tavle-view-only .whiteboard-canvas--base {
+    pointer-events: auto;
+    touch-action: none;
+}
+
+body.tavle-view-only .whiteboard-canvas--active {
+    cursor: grab;
+}
+
+body.tavle-view-only .whiteboard-canvas--active:active {
+    cursor: grabbing;
+}

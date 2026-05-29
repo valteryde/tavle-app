@@ -1,0 +1,80 @@
+# Build Tavle App on every push/PR to master and upload installable artifacts.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target aarch64-apple-darwin
+            name: macos-aarch64
+          - platform: macos-latest
+            args: --target x86_64-apple-darwin
+            name: macos-x86_64
+          - platform: ubuntu-22.04
+            args: ""
+            name: linux-x86_64
+          - platform: windows-latest
+            args: ""
+            name: windows-x86_64
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri app
+        run: npm run tauri build -- ${{ matrix.args }}
+
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tavle-app-${{ matrix.name }}
+          if-no-files-found: error
+          path: |
+            src-tauri/target/**/bundle/dmg/**
+            src-tauri/target/**/bundle/macos/**
+            src-tauri/target/**/bundle/deb/**
+            src-tauri/target/**/bundle/rpm/**
+            src-tauri/target/**/bundle/appimage/**
+            src-tauri/target/**/bundle/msi/**
+            src-tauri/target/**/bundle/nsis/**

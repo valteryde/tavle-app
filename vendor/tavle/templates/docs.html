@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block title %}API Documentation - Whiteboard{% endblock %}
+
+{% block head %}
+    <!-- Alpine.js (local) -->
+    <script defer src="/static/js/vendor/alpine.min.js"></script>
+    <style>
+        .method-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: 2px solid #1e1e1e;
+        }
+        .method-get { background: #10b981; color: white; }
+        .method-post { background: #3b82f6; color: white; }
+        .method-put { background: #f59e0b; color: white; }
+        .method-patch { background: #8b5cf6; color: white; }
+        .method-delete { background: #ef4444; color: white; }
+        
+        .param-table th,
+        .param-table td {
+            padding: 0.5rem 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .param-table th {
+            background: #f9fafb;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 700;
+        }
+    </style>
+{% endblock %}
+
+{% block body_attrs %}class="min-h-screen p-4 md:p-8" style="background: #f5f5f0;"{% endblock %}
+
+{% block body %}
+    <!-- Background decorations -->
+    <div class="fixed inset-0 overflow-hidden pointer-events-none">
+        <div class="absolute top-16 left-16 w-20 h-20 bg-blue-500 opacity-90" style="transform: rotate(15deg);"></div>
+        <div class="absolute top-24 right-32 w-14 h-14 bg-emerald-500 rounded-full opacity-90"></div>
+        <div class="absolute bottom-24 left-32 w-16 h-16 border-4 border-black opacity-50" style="transform: rotate(-10deg);"></div>
+        <div class="absolute bottom-20 right-24 w-10 h-28 bg-yellow-400 opacity-80" style="transform: rotate(8deg);"></div>
+        <svg class="absolute top-1/3 left-1/4 w-24 h-6 opacity-30" viewBox="0 0 100 15">
+            <path d="M0,8 C20,2 40,14 60,8 S80,2 100,8" stroke="#1e1e1e" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </svg>
+    </div>
+
+    <div class="max-w-4xl mx-auto relative" x-data="docsApp()" x-init="fetchDocs()">
+        <!-- Header -->
+        <div class="bg-white shadow-2xl mb-8" style="border: 3px solid #1e1e1e; transform: rotate(-0.3deg);">
+            <div class="h-2 bg-blue-500"></div>
+            <div class="p-6 md:p-8">
+                <div class="flex items-start gap-4 mb-4">
+                    <div class="w-14 h-14 bg-emerald-500 flex items-center justify-center flex-shrink-0" style="border: 2px solid #1e1e1e; transform: rotate(3deg);">
+                        <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-black text-gray-900 tracking-tight leading-tight">
+                            API Documentation
+                        </h1>
+                        <p class="text-gray-600 text-sm uppercase tracking-widest font-medium mt-1" x-text="docs.version ? 'Version ' + docs.version : 'Loading...'"></p>
+                    </div>
+                </div>
+
+                <!-- Authentication Info -->
+                <div class="border-2 border-gray-900 p-4 mb-4" style="background: #fef9c3; transform: rotate(0.2deg);">
+                    <div class="flex items-start gap-3">
+                        <svg class="w-5 h-5 text-gray-900 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                        </svg>
+                        <div>
+                            <h3 class="font-black text-gray-900 text-sm uppercase tracking-wide">Authentication Required</h3>
+                            <p class="text-xs text-gray-700 mt-1" x-text="docs.authentication?.description || ''"></p>
+                            <code class="block mt-2 text-xs bg-white px-2 py-1 border border-gray-300 font-mono" x-text="docs.authentication?.header || ''"></code>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Base URL -->
+                <div class="flex items-center gap-2 text-sm">
+                    <span class="font-bold text-gray-900 uppercase tracking-wide text-xs">Base URL:</span>
+                    <code class="bg-gray-100 px-2 py-1 font-mono text-xs border border-gray-300" x-text="docs.base_url || '/api'"></code>
+                </div>
+            </div>
+            <div class="flex">
+                <div class="flex-1 h-2 bg-emerald-500"></div>
+                <div class="flex-1 h-2 bg-yellow-400"></div>
+                <div class="flex-1 h-2 bg-gray-900"></div>
+            </div>
+        </div>
+
+        <!-- Resources -->
+        <template x-for="(resource, resourceIndex) in docs.resources || []" :key="resourceIndex">
+            <div class="bg-white shadow-xl mb-6" :style="'border: 3px solid #1e1e1e; transform: rotate(' + (resourceIndex % 2 === 0 ? '0.2' : '-0.2') + 'deg);'">
+                <!-- Resource Header -->
+                <div class="h-2" :class="['bg-emerald-500', 'bg-blue-500', 'bg-yellow-400'][resourceIndex % 3]"></div>
+                <div class="p-4 md:p-6 border-b-2 border-gray-200">
+                    <h2 class="text-xl font-black text-gray-900 uppercase tracking-wide" x-text="resource.resource"></h2>
+                    <p class="text-sm text-gray-600 mt-1" x-text="resource.description"></p>
+                </div>
+
+                <!-- Endpoints -->
+                <div class="divide-y divide-gray-100">
+                    <template x-for="(endpoint, endpointIndex) in resource.endpoints || []" :key="endpointIndex">
+                        <div class="endpoint-card p-4 md:p-6" x-data="{ open: false }">
+                            <!-- Endpoint Header -->
+                            <div class="flex flex-wrap items-center gap-3 cursor-pointer" @click="open = !open">
+                                <span class="method-badge" :class="'method-' + endpoint.method.toLowerCase()" x-text="endpoint.method"></span>
+                                <code class="text-sm font-mono text-gray-800 font-medium" x-text="`${docs.base_url}${endpoint.path}`"></code>
+                                <span class="text-xs text-gray-500 ml-auto hidden md:inline" x-text="endpoint.description"></span>
+                                <svg class="w-5 h-5 text-gray-400 transition-transform" :class="{ 'rotate-180': open }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </div>
+                            
+                            <!-- Endpoint Details -->
+                            <div x-show="open" x-transition class="mt-4">
+                                <p class="text-sm text-gray-600 mb-4 md:hidden" x-text="endpoint.description"></p>
+                                
+                                <!-- Parameters -->
+                                <template x-if="endpoint.parameters && endpoint.parameters.length > 0">
+                                    <div class="mb-4">
+                                        <h4 class="text-xs font-bold text-gray-900 uppercase tracking-wider mb-2">Parameters</h4>
+                                        <div class="overflow-x-auto">
+                                            <table class="param-table w-full text-sm border-2 border-gray-200">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Name</th>
+                                                        <th>Type</th>
+                                                        <th>Required</th>
+                                                        <th>Description</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <template x-for="param in endpoint.parameters" :key="param.name">
+                                                        <tr>
+                                                            <td>
+                                                                <code class="text-xs bg-gray-100 px-1.5 py-0.5" x-text="param.name"></code>
+                                                                <span x-show="param.in === 'path'" class="text-xs text-blue-600 ml-1">(path)</span>
+                                                            </td>
+                                                            <td class="text-xs text-gray-600" x-text="param.type"></td>
+                                                            <td>
+                                                                <span x-show="param.required" class="text-xs text-red-600 font-bold">Yes</span>
+                                                                <span x-show="!param.required" class="text-xs text-gray-400">No</span>
+                                                                <span x-show="param.default !== undefined" class="text-xs text-gray-500 ml-1" x-text="'(default: ' + param.default + ')'"></span>
+                                                            </td>
+                                                            <td class="text-xs text-gray-600" x-text="param.description"></td>
+                                                        </tr>
+                                                    </template>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </template>
+
+                                <!-- Response -->
+                                <template x-if="endpoint.response">
+                                    <div>
+                                        <h4 class="text-xs font-bold text-gray-900 uppercase tracking-wider mb-2">Response</h4>
+                                        <div class="bg-gray-900 p-3 overflow-x-auto border-2 border-gray-900">
+                                            <pre class="text-xs text-gray-300"><code x-text="typeof endpoint.response === 'string' ? endpoint.response : JSON.stringify(endpoint.response, null, 2)"></code></pre>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <div class="flex">
+                    <div class="flex-1 h-1" :class="['bg-blue-500', 'bg-yellow-400', 'bg-emerald-500'][resourceIndex % 3]"></div>
+                    <div class="flex-1 h-1" :class="['bg-yellow-400', 'bg-emerald-500', 'bg-blue-500'][resourceIndex % 3]"></div>
+                    <div class="flex-1 h-1 bg-gray-900"></div>
+                </div>
+            </div>
+        </template>
+
+        <!-- Loading State -->
+        <template x-if="loading">
+            <div class="bg-white shadow-xl p-8 text-center" style="border: 3px solid #1e1e1e;">
+                <div class="animate-pulse">
+                    <div class="w-12 h-12 bg-gray-300 mx-auto mb-4"></div>
+                    <div class="h-4 bg-gray-300 w-48 mx-auto mb-2"></div>
+                    <div class="h-3 bg-gray-200 w-32 mx-auto"></div>
+                </div>
+            </div>
+        </template>
+
+        <!-- Error State -->
+        <template x-if="error">
+            <div class="bg-white shadow-xl p-8" style="border: 3px solid #1e1e1e;">
+                <div class="border-2 border-gray-900 p-4" style="background: #fee2e2;">
+                    <div class="flex items-start gap-3">
+                        <svg class="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div>
+                            <h3 class="font-black text-gray-900 text-sm uppercase tracking-wide">Error Loading Documentation</h3>
+                            <p class="text-xs text-gray-700 mt-1" x-text="error"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- Footer -->
+        <div class="text-center mt-8 mb-4">
+            <a href="/" class="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 font-medium uppercase tracking-wide">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back to Home
+            </a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        function docsApp() {
+            return {
+                docs: {},
+                loading: true,
+                error: null,
+                
+                async fetchDocs() {
+                    try {
+                        const response = await fetch('/api/docs');
+                        if (!response.ok) throw new Error('Failed to fetch documentation');
+                        this.docs = await response.json();
+                        this.loading = false;
+                    } catch (err) {
+                        this.error = err.message;
+                        this.loading = false;
+                    }
+                }
+            };
+        }
+    </script>
+{% endblock %}

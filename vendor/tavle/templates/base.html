@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>{% block title %}Whiteboard{% endblock %}</title>
+
+    <!-- Favicons -->
+    <link rel="icon" type="image/x-icon" href="/static/favicon/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/favicon/apple-touch-icon.png">
+    <link rel="manifest" href="/static/favicon/site.webmanifest">
+
+    <!-- Internationalization -->
+    <script src="/static/js/i18n.js"></script>
+
+    {% block head_start %}{% endblock %}
+
+    <!-- Tailwind CSS (local) -->
+    <script src="/static/js/vendor/tailwind.js"></script>
+
+    {% block head %}{% endblock %}
+</head>
+<body {% block body_attrs %}{% endblock %}>
+    {% block body %}{% endblock %}
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

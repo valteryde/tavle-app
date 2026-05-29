@@ -1,0 +1,75 @@
+# Build and publish Tavle App to GitHub Releases.
+# Triggers: push tag app-v* (e.g. app-v0.1.0) or manual workflow_dispatch.
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - app-v*
+
+jobs:
+  publish:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target aarch64-apple-darwin
+          - platform: macos-latest
+            args: --target x86_64-apple-darwin
+          - platform: ubuntu-22.04
+            args: ""
+          - platform: windows-latest
+            args: ""
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: app-v__VERSION__
+          releaseName: Tavle App v__VERSION__
+          releaseBody: |
+            Desktop wrapper for Tavle whiteboards.
+
+            **Installers**
+            - macOS: `.dmg` (Intel and Apple Silicon)
+            - Linux: `.deb`, `.AppImage`
+            - Windows: `.msi` / NSIS
+
+            **Runtime note:** The app bundles Tavle source and starts it with system Python 3.11 or 3.12 if no PyInstaller sidecar is present. Install Python and run `npm run setup:tavle` deps on first use, or build the sidecar with `npm run build:sidecar` before release.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

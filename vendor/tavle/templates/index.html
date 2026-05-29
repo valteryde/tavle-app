@@ -1,0 +1,979 @@
+{% extends "base.html" %}
+
+{% block title %}Collaborative Whiteboard{% endblock %}
+
+{% block head %}
+    <!-- Whiteboard CSS -->
+    <link rel="stylesheet" href="/static/css/whiteboard.css">
+    {% for href in tavle_extra_stylesheets %}
+    <link rel="stylesheet" href="{{ href|e }}">
+    {% endfor %}
+
+    <!-- Alpine.js (local) -->
+    <script defer src="/static/js/vendor/alpine.min.js"></script>
+
+    <!-- Socket.IO (local) -->
+    <script src="/static/js/vendor/socket.io.min.js"></script>
+
+    <!-- Perfect Freehand - Load via ES module (local) -->
+    <script type="module">
+        import { getStroke } from '/static/js/vendor/perfect-freehand.mjs';
+        window.getStroke = getStroke;
+        window.dispatchEvent(new Event('perfect-freehand-ready'));
+    </script>
+
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/regular/style.css"
+    />
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/thin/style.css"
+    />
+
+    {# Embed mode (?embed=1): when the board is iframed by a parent app, nudge
+       toolbar layout for a narrower viewport; connection + user presence stay
+       visible. CSS-only — same Alpine app everywhere. #}
+    {% if embed %}
+    <style>
+      /* Don't force white: lets optional brand overlay match editor surface-page */
+      body.tavle-embed .whiteboard-canvas--base { background-color: #ffffff !important; }
+      /* Toolbar layout: whiteboard.css (body.tavle-embed #tavle-toolbar-host) */
+    </style>
+    {% endif %}
+
+    {# Hide name/loading overlays before Alpine when the viewer is already known #}
+    <script>
+      (function () {
+        try {
+          var params = new URLSearchParams(window.location.search);
+          var name = (params.get("name") || localStorage.getItem("whiteboardUserName") || "").trim();
+          if (name) {
+            document.documentElement.classList.add("tavle-has-name");
+          }
+          var ro = (params.get("readonly") || "").trim().toLowerCase();
+          if (ro === "1" || ro === "true" || ro === "yes") {
+            document.documentElement.classList.add("tavle-view-only");
+          }
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
+    <style>
+      html.tavle-has-name #tavle-name-overlay { display: none !important; }
+    </style>
+{% endblock %}
+
+{% block body_attrs %}class="bg-gray-100 overflow-hidden{% if embed %} tavle-embed{% endif %}{% if nohud %} tavle-nohud{% endif %}{% if readonly %} tavle-view-only{% endif %}" data-embed="{{ '1' if embed else '0' }}" data-view-only="{{ '1' if readonly else '0' }}"{% endblock %}
+
+{% block body %}
+    <!-- Main Whiteboard Component -->
+    <div id="tavle-root" x-data="whiteboardApp()" x-init="init()" class="whiteboard-container" :data-mode="mode">
+
+        <!-- Dual Canvas System -->
+        <canvas id="tavle-canvas-base" x-ref="baseCanvas" class="whiteboard-canvas whiteboard-canvas--base"></canvas>
+        <canvas id="tavle-canvas-active" x-ref="activeCanvas" class="whiteboard-canvas whiteboard-canvas--active"></canvas>
+
+        <!-- Floating Tool Palette - Swiss + Whiteboard Style -->
+        <div id="tavle-toolbar-host" class="tavle-toolbar-host fixed top-4 left-1/2 -translate-x-1/2 z-50">
+            <div id="tavle-toolbar-inner"
+                class="tavle-toolbar-inner flex items-center bg-white shadow-xl"
+                style="border: 2px solid #1e1e1e; transform: rotate(-0.3deg);">
+                <!-- Tool Selection -->
+                <div id="tavle-toolbar-modes" class="flex items-center gap-0.5 px-2 py-1.5">
+                    <button id="tavle-mode-draw" @click="setMode('draw')"
+                        :class="mode === 'draw' ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2.5 transition-all duration-150" 
+                        :style="mode === 'draw' ? 'border: 2px solid #1e1e1e; transform: rotate(-2deg);' : 'border: 2px solid transparent;'"
+                        :title="t('tooltips.draw')">
+                        <i class="ph-thin ph-pencil-simple text-xl"></i>
+                    </button>
+                    <button id="tavle-mode-erase" @click="setMode('erase')"
+                        :class="mode === 'erase' ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2.5 transition-all duration-150"
+                        :style="mode === 'erase' ? 'border: 2px solid #1e1e1e; transform: rotate(1deg);' : 'border: 2px solid transparent;'"
+                        :title="t('tooltips.erase')">
+                        <i class="ph-thin ph-eraser text-xl"></i>
+                    </button>
+                    <button id="tavle-mode-select" @click="setMode('select')"
+                        :class="mode === 'select' ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2.5 transition-all duration-150"
+                        :style="mode === 'select' ? 'border: 2px solid #1e1e1e; transform: rotate(-1deg);' : 'border: 2px solid transparent;'"
+                        :title="t('tooltips.select')">
+                        <i class="ph-thin ph-cursor text-xl"></i>
+                    </button>
+                    <button id="tavle-mode-pan" @click="setMode('pan')"
+                        :class="mode === 'pan' ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2.5 transition-all duration-150"
+                        :style="mode === 'pan' ? 'border: 2px solid #1e1e1e; transform: rotate(2deg);' : 'border: 2px solid transparent;'"
+                        :title="t('tooltips.pan')">
+                        <i class="ph-thin ph-hand text-xl"></i>
+                    </button>
+                </div>
+
+                <!-- Divider -->
+                <div id="tavle-toolbar-divider-after-modes" class="tavle-toolbar-divider w-0.5 h-8 bg-gray-900 mx-1"></div>
+
+                <!-- Stroke Color -->
+                <div id="tavle-toolbar-stroke-color" class="flex items-center gap-1 px-2">
+                    <div id="tavle-stroke-color-wrap" class="relative flex items-center" x-data="{ open: false }">
+                        <button id="tavle-stroke-color-trigger" type="button" @click="open = !open"
+                            class="tavle-stroke-color-swatch shrink-0 transition-all duration-150"
+                            :style="{ backgroundColor: color }"
+                            :title="t('tooltips.strokeColor')">
+                        </button>
+                        <!-- Color Dropdown -->
+                        <div id="tavle-stroke-color-dropdown" x-show="open" @click.outside="open = false" x-transition
+                            class="absolute top-full left-0 mt-2 p-4 bg-white shadow-xl z-50 min-w-[220px]"
+                            style="border: 2px solid #1e1e1e; transform: rotate(-0.5deg);">
+                            <p class="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3" x-text="t('toolbar.strokeColor')"></p>
+                            <div id="tavle-stroke-color-palette" class="grid grid-cols-5 gap-2 mb-4">
+                                <template x-for="(c, idx) in colorPalette" :key="c">
+                                    <button @click="setColor(c); open = false" 
+                                        :id="'tavle-palette-' + idx"
+                                        :style="{ backgroundColor: c }"
+                                        :class="color === c ? 'ring-2 ring-gray-900 ring-offset-2' : ''"
+                                        class="w-9 h-9 border-2 border-gray-900 hover:scale-110 transition-transform cursor-pointer">
+                                    </button>
+                                </template>
+                            </div>
+                            <div class="pt-3 border-t-2 border-gray-900">
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <span class="text-xs font-bold text-gray-900 uppercase" x-text="t('toolbar.customColor') + ':'"></span>
+                                    <input id="tavle-stroke-color-custom" type="color" x-model="color" @input="setColor($event.target.value)"
+                                        class="w-10 h-8 cursor-pointer border-2 border-gray-900">
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Divider -->
+                <div id="tavle-toolbar-divider-after-stroke-color" class="tavle-toolbar-divider w-0.5 h-8 bg-gray-900 mx-1"></div>
+
+                <!-- Stroke Width Presets (shown when not erasing) -->
+                <div id="tavle-toolbar-stroke-width" class="flex items-center gap-1 px-2" x-show="mode !== 'erase'">
+                    <template x-for="sw in strokeWidths" :key="sw.value">
+                        <button @click="setStrokeWidth(sw.value)"
+                            :id="'tavle-stroke-width-' + sw.value"
+                            :class="strokeWidth == sw.value ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 text-gray-700'"
+                            class="w-9 h-9 transition-all duration-150 flex items-center justify-center"
+                            :style="strokeWidth == sw.value ? 'border: 2px solid #1e1e1e;' : 'border: 2px solid transparent;'"
+                            :title="t(sw.labelKey)">
+                            <div class="rounded-full bg-current" :style="{ width: sw.size + 'px', height: sw.size + 'px' }"></div>
+                        </button>
+                    </template>
+                </div>
+
+                <!-- Eraser Size Presets (shown when erasing) -->
+                <div id="tavle-toolbar-eraser-width" class="flex items-center gap-1 px-2" x-show="mode === 'erase'" x-cloak>
+                    <template x-for="ew in eraserWidths" :key="ew.value">
+                        <button @click="setEraserWidth(ew.value)"
+                            :id="'tavle-eraser-width-' + ew.value"
+                            :class="eraserWidth == ew.value ? 'bg-rose-500 text-white' : 'hover:bg-gray-100 text-gray-700'"
+                            class="w-9 h-9 transition-all duration-150 flex items-center justify-center"
+                            :style="eraserWidth == ew.value ? 'border: 2px solid #1e1e1e;' : 'border: 2px solid transparent;'"
+                            :title="t(ew.labelKey)">
+                            <div class="rounded-full border-2 border-current" :style="{ width: ew.size + 'px', height: ew.size + 'px' }"></div>
+                        </button>
+                    </template>
+                </div>
+
+                <!-- Divider -->
+                <input id="tavle-image-input" type="file" x-ref="imageInput" @change="uploadImage($event)" accept="image/*" class="hidden">
+
+                <div id="tavle-toolbar-divider-after-width" class="tavle-toolbar-divider w-0.5 h-8 bg-gray-900 mx-1"></div>
+
+                <div id="tavle-toolbar-secondary" class="flex items-center shrink-0">
+                <div id="tavle-toolbar-canvas-options" class="flex items-center gap-0.5 px-2">
+                    <!-- Background Color -->
+                    <div id="tavle-background-wrap" class="relative" x-data="{ open: false }">
+                        <button id="tavle-background-trigger" @click="open = !open" 
+                            :class="backgroundColor !== '#ffffff' ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                            class="p-2.5 transition-all duration-150"
+                            :style="backgroundColor !== '#ffffff' ? 'border: 2px solid #1e1e1e;' : 'border: 2px solid transparent;'"
+                            :title="t('tooltips.backgroundColor')">
+                            <i class="ph-thin ph-paint-bucket text-xl"></i>
+                        </button>
+                        <!-- Background Color Dropdown -->
+                        <div id="tavle-background-dropdown" x-show="open" @click.outside="open = false" x-transition
+                            class="absolute top-full right-0 mt-2 p-3 bg-white shadow-xl z-50 min-w-[180px]"
+                            style="border: 2px solid #1e1e1e; transform: rotate(0.5deg);">
+                            <p class="text-xs font-bold text-gray-900 uppercase tracking-wider mb-2" x-text="t('toolbar.background')"></p>
+                            <div id="tavle-background-palette" class="grid grid-cols-5 gap-1.5">
+                                <template x-for="(bg, idx) in backgroundColors" :key="bg">
+                                    <button @click="setBackgroundColor(bg); open = false" 
+                                        :id="'tavle-background-preset-' + idx"
+                                        :style="{ backgroundColor: bg }"
+                                        :class="[
+                                            backgroundColor === bg ? 'ring-2 ring-gray-900 ring-offset-1' : '',
+                                            bg === '#ffffff' ? 'border-2 border-gray-900' : 'border-2 border-gray-900'
+                                        ]"
+                                        class="w-7 h-7 hover:scale-110 transition-transform">
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Grid Toggle -->
+                    <button id="tavle-grid-toggle" @click="toggleGrid()"
+                        :class="showGrid ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2.5 transition-all duration-150"
+                        :style="showGrid ? 'border: 2px solid #1e1e1e; transform: rotate(-1deg);' : 'border: 2px solid transparent;'"
+                        :title="t('tooltips.toggleGrid')">
+                        <i class="ph-thin ph-grid-four text-xl"></i>
+                    </button>
+                </div>
+
+                <!-- Divider -->
+                <div id="tavle-toolbar-divider-after-canvas-options" class="tavle-toolbar-divider w-0.5 h-8 bg-gray-900 mx-1"></div>
+
+                <!-- Zoom Controls -->
+                <div id="tavle-toolbar-zoom" class="flex items-center gap-0.5 px-2">
+                    <button id="tavle-zoom-out" @click="zoomOut()" 
+                        class="p-2 hover:bg-gray-100 text-gray-700 transition-colors border-2 border-transparent hover:border-gray-300"
+                        :title="t('tooltips.zoomOut')">
+                        <i class="ph-thin ph-minus text-lg"></i>
+                    </button>
+                    <button id="tavle-zoom-reset" @click="resetZoom()" type="button"
+                        class="tavle-toolbar-zoom-readout px-2 py-1 hover:bg-gray-100 text-gray-900 text-xs font-bold min-w-[50px] transition-colors"
+                        :title="t('tooltips.resetZoom')"
+                        x-text="Math.round(zoom * 100) + '%'">
+                    </button>
+                    <button id="tavle-zoom-in" @click="zoomIn()" 
+                        class="p-2 hover:bg-gray-100 text-gray-700 transition-colors border-2 border-transparent hover:border-gray-300"
+                        :title="t('tooltips.zoomIn')">
+                        <i class="ph-thin ph-plus text-lg"></i>
+                    </button>
+                </div>
+
+                <!-- Divider -->
+                <div id="tavle-toolbar-divider-after-zoom" class="tavle-toolbar-divider w-0.5 h-8 bg-gray-900 mx-1"></div>
+
+                <!-- Actions -->
+                <div id="tavle-toolbar-actions" class="flex items-center gap-0.5 px-2">
+                    <button id="tavle-action-upload" @click="$refs.imageInput.click()" 
+                        class="p-2.5 hover:bg-gray-100 text-gray-600 transition-colors border-2 border-transparent hover:border-gray-300"
+                        :title="t('tooltips.uploadImage')">
+                        <i class="ph-thin ph-image text-xl"></i>
+                    </button>
+                    <button id="tavle-action-export" @click="exportImage()" 
+                        class="p-2.5 hover:bg-gray-100 text-gray-600 transition-colors border-2 border-transparent hover:border-gray-300"
+                        :title="t('tooltips.export')">
+                        <i class="ph-thin ph-export text-xl"></i>
+                    </button>
+                    <button id="tavle-action-clear" @click="clearCanvas()" 
+                        class="p-2.5 hover:bg-red-500 text-gray-600 hover:text-white transition-colors border-2 border-transparent hover:border-gray-900"
+                        :title="t('tooltips.clear')">
+                        <i class="ph-thin ph-trash text-xl"></i>
+                    </button>
+                </div>
+                </div>
+
+                <!-- Grouped overflow when the bar is wider than the viewport -->
+                <div id="tavle-toolbar-more-wrap" class="flex items-center shrink-0 px-1">
+                    <button id="tavle-toolbar-more-trigger" type="button"
+                        @click="toggleToolbarMore()"
+                        :class="toolbarMoreOpen ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                        class="p-2.5 transition-all duration-150 border-2 border-transparent"
+                        :title="t('toolbar.more')"
+                        :aria-expanded="toolbarMoreOpen">
+                        <i class="ph-thin ph-dots-three-outline text-xl"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="tavle-toolbar-more-panel" x-show="toolbarMoreOpen" @click.outside="closeToolbarMore()" x-transition
+                class="tavle-toolbar-more-panel absolute top-full right-0 mt-2 z-[60] min-w-[220px] max-w-[min(280px,calc(100vw-24px))] p-3 bg-white shadow-xl"
+                style="border: 1px solid rgba(26, 31, 54, 0.12);">
+                        <p class="tavle-toolbar-more-section-label" x-text="t('toolbar.groupCanvas')"></p>
+                        <div class="flex items-center gap-1 mb-3">
+                            <div class="relative">
+                                <button type="button" @click="toolbarBgOpen = !toolbarBgOpen"
+                                    :class="backgroundColor !== '#ffffff' ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                                    class="p-2.5 transition-all duration-150 border-2 border-transparent"
+                                    :title="t('tooltips.backgroundColor')">
+                                    <i class="ph-thin ph-paint-bucket text-xl"></i>
+                                </button>
+                                <div x-show="toolbarBgOpen" @click.outside="toolbarBgOpen = false" x-transition
+                                    class="absolute top-full left-0 mt-2 p-3 bg-white shadow-xl z-50 min-w-[180px]"
+                                    style="border: 1px solid rgba(26, 31, 54, 0.12);">
+                                    <p class="text-xs font-bold text-gray-900 uppercase tracking-wider mb-2" x-text="t('toolbar.background')"></p>
+                                    <div class="grid grid-cols-5 gap-1.5">
+                                        <template x-for="(bg, idx) in backgroundColors" :key="'overflow-bg-' + bg">
+                                            <button type="button" @click="setBackgroundColor(bg); toolbarBgOpen = false"
+                                                :style="{ backgroundColor: bg }"
+                                                :class="backgroundColor === bg ? 'ring-2 ring-gray-900 ring-offset-1' : ''"
+                                                class="w-7 h-7 border-2 border-gray-900 hover:scale-110 transition-transform">
+                                            </button>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" @click="toggleGrid(); closeToolbarMore()"
+                                :class="showGrid ? 'bg-yellow-400 text-gray-900' : 'hover:bg-gray-100 text-gray-600'"
+                                class="p-2.5 transition-all duration-150 border-2 border-transparent"
+                                :title="t('tooltips.toggleGrid')">
+                                <i class="ph-thin ph-grid-four text-xl"></i>
+                            </button>
+                        </div>
+                        <p class="tavle-toolbar-more-section-label" x-text="t('toolbar.groupZoom')"></p>
+                        <div class="flex items-center gap-1 mb-3">
+                            <button type="button" @click="zoomOut()"
+                                class="p-2 hover:bg-gray-100 text-gray-700 border-2 border-transparent"
+                                :title="t('tooltips.zoomOut')">
+                                <i class="ph-thin ph-minus text-lg"></i>
+                            </button>
+                            <button type="button" @click="resetZoom()"
+                                class="tavle-toolbar-zoom-readout px-2 py-1 hover:bg-gray-100 text-gray-900 text-xs font-bold min-w-[50px] border-2 border-transparent"
+                                :title="t('tooltips.resetZoom')"
+                                x-text="Math.round(zoom * 100) + '%'">
+                            </button>
+                            <button type="button" @click="zoomIn()"
+                                class="p-2 hover:bg-gray-100 text-gray-700 border-2 border-transparent"
+                                :title="t('tooltips.zoomIn')">
+                                <i class="ph-thin ph-plus text-lg"></i>
+                            </button>
+                        </div>
+                        <p class="tavle-toolbar-more-section-label" x-text="t('toolbar.groupActions')"></p>
+                        <div class="flex items-center gap-1">
+                            <button type="button" @click="$refs.imageInput.click(); closeToolbarMore()"
+                                class="p-2.5 hover:bg-gray-100 text-gray-600 border-2 border-transparent"
+                                :title="t('tooltips.uploadImage')">
+                                <i class="ph-thin ph-image text-xl"></i>
+                            </button>
+                            <button type="button" @click="exportImage(); closeToolbarMore()"
+                                class="p-2.5 hover:bg-gray-100 text-gray-600 border-2 border-transparent"
+                                :title="t('tooltips.export')">
+                                <i class="ph-thin ph-export text-xl"></i>
+                            </button>
+                            <button type="button" @click="clearCanvas(); closeToolbarMore()"
+                                class="p-2.5 hover:bg-red-500 text-gray-600 hover:text-white border-2 border-transparent"
+                                :title="t('tooltips.clear')">
+                                <i class="ph-thin ph-trash text-xl"></i>
+                            </button>
+                        </div>
+            </div>
+        </div>
+
+        <!-- Connection Status - Swiss Style -->
+        <div id="tavle-connection-wrap" class="fixed bottom-4 left-4 z-50">
+            <div id="tavle-connection-status" class="flex items-center gap-2 px-3 py-2 bg-white shadow-lg text-sm"
+                style="border: 2px solid #1e1e1e; transform: rotate(-1deg);"
+                :class="rateLimited ? 'text-amber-600' : (connected ? 'text-emerald-600' : 'text-gray-400')"
+                :title="rateLimited ? t('connection.rateLimitedHint') : ''">
+                <div class="w-2.5 h-2.5" :class="rateLimited ? 'bg-amber-500' : (connected ? 'bg-emerald-500' : 'bg-gray-400')"></div>
+                <span class="font-bold uppercase tracking-wider text-xs" x-text="rateLimited ? t('connection.rateLimited') : (connected ? t('connection.connected') : t('connection.disconnected'))"></span>
+            </div>
+        </div>
+
+        <!-- Error toast -->
+        <div id="tavle-toast" x-cloak x-show="toastVisible" x-transition
+            class="fixed bottom-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-white text-sm text-red-600 font-medium max-w-md text-center"
+            style="border: 2px solid #1e1e1e;"
+            x-text="toastMessage"></div>
+
+        <!-- User Panel (bottom right) - Swiss + Whiteboard Style -->
+        <div id="tavle-user-panel-wrap" class="fixed bottom-4 right-4 z-50" x-cloak x-show="userName">
+            <!-- Connected users panel -->
+            <div id="tavle-user-panel" class="bg-white shadow-xl overflow-hidden min-w-[220px]" style="border: 2px solid #1e1e1e; transform: rotate(0.5deg);">
+                <!-- Header with your name -->
+                <div class="px-3 py-2.5 bg-yellow-400 border-b-2 border-gray-900 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <div class="w-3 h-3 border-2 border-gray-900" :style="{ backgroundColor: userColor }"></div>
+                        <span class="text-sm font-bold text-gray-900 uppercase tracking-wide" x-text="userName"></span>
+                        <span class="text-xs text-gray-700 font-medium">(<span x-text="t('userPanel.you')"></span>)</span>
+                        <button @click="editUserName()" 
+                            class="p-1 text-gray-700 hover:text-gray-900 transition-colors"
+                            :title="t('userPanel.editName')">
+                            <i class="ph-thin ph-pencil-simple text-sm"></i>
+                        </button>
+                    </div>
+                    <button @click="toggleUserPanel()" 
+                        class="text-gray-900 hover:text-gray-700 transition-colors">
+                        <i class="ph-thin text-lg transition-transform" :class="userPanelExpanded ? 'ph-caret-down' : 'ph-caret-up'"></i>
+                    </button>
+                </div>
+
+                <!-- User list -->
+                <div x-show="userPanelExpanded" x-transition class="max-h-48 overflow-y-auto bg-white">
+                    <template x-if="remoteUsers.length === 0">
+                        <div class="px-3 py-3 text-sm text-gray-500 text-center font-medium">
+                            <span x-text="t('userPanel.noUsers')"></span>
+                        </div>
+                    </template>
+                    <template x-for="user in remoteUsers" :key="user.oduserId">
+                        <div class="px-3 py-2 flex items-center justify-between hover:bg-gray-50 border-b-2 border-gray-200 last:border-b-0">
+                            <div class="flex items-center gap-2">
+                                <div class="w-3 h-3 border-2 border-gray-900" :style="{ backgroundColor: user.color }"></div>
+                                <span class="text-sm text-gray-700 font-medium" x-text="user.name"></span>
+                            </div>
+                            <button @click="jumpToUser(user.oduserId)" 
+                                class="p-1 text-gray-500 hover:text-red-500 transition-colors"
+                                :title="t('userPanel.jumpToUser')">
+                                <i class="ph-thin ph-map-pin text-base"></i>
+                            </button>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Bottom accent -->
+                <div id="tavle-user-panel-accent" class="flex">
+                    <div class="flex-1 h-1 bg-red-500"></div>
+                    <div class="flex-1 h-1 bg-blue-500"></div>
+                    <div class="flex-1 h-1 bg-gray-900"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Overlay - Swiss Style -->
+        <div id="tavle-loading-overlay" x-cloak x-show="loading && userName" x-transition class="absolute inset-0 flex items-center justify-center z-50" style="background: #f5f5f0;">
+            <div class="text-center bg-white p-8 shadow-xl" style="border: 3px solid #1e1e1e; transform: rotate(-0.5deg);">
+                <div class="h-1.5 bg-red-500 -mt-8 -mx-8 mb-6"></div>
+                <div class="w-12 h-12 border-4 border-gray-200 border-t-gray-900 animate-spin mx-auto"></div>
+                <p class="mt-4 text-gray-900 font-bold uppercase tracking-wider text-sm" x-text="t('loading.text')"></p>
+                <div class="flex -mx-8 -mb-8 mt-6">
+                    <div class="flex-1 h-1.5 bg-blue-500"></div>
+                    <div class="flex-1 h-1.5 bg-yellow-400"></div>
+                    <div class="flex-1 h-1.5 bg-gray-900"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Name Entry Modal (shown before whiteboard) -->
+        <div id="tavle-name-overlay" x-cloak x-show="!userName" class="absolute inset-0 flex items-center justify-center z-[100]" style="background: #f5f5f0;">
+            <!-- Swiss-style geometric decorations -->
+            <div class="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+                <!-- Bold geometric shapes -->
+                <div class="absolute top-12 left-12 w-24 h-24 bg-red-500 opacity-90" style="transform: rotate(12deg);"></div>
+                <div class="absolute top-32 right-20 w-16 h-16 bg-yellow-400 rounded-full opacity-90"></div>
+                <div class="absolute bottom-20 left-24 w-20 h-20 border-4 border-black opacity-60" style="transform: rotate(-8deg);"></div>
+                <div class="absolute bottom-32 right-16 w-12 h-32 bg-blue-500 opacity-80" style="transform: rotate(6deg);"></div>
+                <div class="absolute top-1/4 right-1/4 w-8 h-8 bg-black rounded-full opacity-70"></div>
+                <!-- Playful sketchy lines -->
+                <svg class="absolute top-20 left-1/3 w-32 h-8 opacity-40" viewBox="0 0 120 20">
+                    <path d="M0,10 Q30,2 60,10 T120,10" stroke="#1e1e1e" stroke-width="2" fill="none" stroke-linecap="round"/>
+                </svg>
+                <svg class="absolute bottom-40 right-1/3 w-24 h-6 opacity-30" viewBox="0 0 100 15">
+                    <path d="M0,8 C20,2 40,14 60,8 S80,2 100,8" stroke="#1e1e1e" stroke-width="2" fill="none" stroke-linecap="round"/>
+                </svg>
+            </div>
+
+            <!-- Main card with Swiss + whiteboard style -->
+            <div class="relative bg-white max-w-md w-full mx-4 shadow-2xl" style="border: 3px solid #1e1e1e; transform: rotate(-0.5deg);">
+                <!-- Top accent bar (Swiss style) -->
+                <div class="h-2 bg-red-500"></div>
+                
+                <div class="p-8">
+                    <!-- Header with bold Swiss typography -->
+                    <div class="mb-8">
+                        <div class="flex items-start gap-4 mb-4">
+                            <!-- Playful icon with sketchy border -->
+                            <div class="relative flex-shrink-0">
+                                <div class="w-14 h-14 bg-yellow-400 flex items-center justify-center" style="border: 2px solid #1e1e1e; transform: rotate(3deg);">
+                                    <i class="ph-thin ph-pencil-line text-2xl text-gray-900"></i>
+                                </div>
+                            </div>
+                            <div>
+                                <h1 class="text-3xl font-black text-gray-900 tracking-tight leading-tight" style="font-family: system-ui, -apple-system, sans-serif;">
+                                    <span x-text="t('namePicker.welcomeLine1')"></span><br><span x-text="t('namePicker.welcomeLine2')"></span>
+                                </h1>
+                            </div>
+                        </div>
+                        <p class="text-gray-600 text-sm uppercase tracking-widest font-medium" x-text="t('namePicker.subtitle')"></p>
+                    </div>
+
+                    <div class="space-y-6">
+                        <!-- Name input with sketchy underline style -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-900 uppercase tracking-wider mb-2" x-text="t('namePicker.yourName')"></label>
+                            <div class="relative">
+                                <input type="text" 
+                                    x-ref="nameInput"
+                                    x-model="userNameInput" 
+                                    @keydown.enter="setUserName()"
+                                    :placeholder="t('namePicker.placeholder')"
+                                    class="w-full px-0 py-3 bg-transparent border-0 border-b-3 border-gray-900 focus:outline-none focus:border-red-500 text-xl font-medium placeholder-gray-300 transition-colors"
+                                    style="border-bottom: 3px solid #1e1e1e;">
+                                <!-- Decorative pencil mark -->
+                                <svg class="absolute -right-2 bottom-0 w-6 h-6 text-gray-300" viewBox="0 0 24 24">
+                                    <path d="M4,20 Q12,18 20,20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+                                </svg>
+                            </div>
+                        </div>
+
+                        <!-- Fun name suggestions with playful pill style -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-900 uppercase tracking-wider mb-3" x-text="t('namePicker.suggestions')"></label>
+                            <div class="flex flex-wrap gap-2">
+                                <template x-for="animal in suggestedNames" :key="animal">
+                                    <button @click="userNameInput = animal" 
+                                        :class="userNameInput === animal ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-900 hover:bg-gray-100'"
+                                        class="px-4 py-1.5 text-sm font-semibold border-2 transition-all duration-150"
+                                        :style="userNameInput === animal ? 'transform: rotate(-2deg) scale(1.05);' : 'transform: rotate(' + (Math.random() * 4 - 2) + 'deg);'">
+                                        <span x-text="animal"></span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- Bold Swiss-style CTA button -->
+                        <button @click="setUserName()" 
+                            :disabled="!userNameInput.trim()"
+                            :class="userNameInput.trim() ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'"
+                            class="w-full py-4 font-black text-lg uppercase tracking-wider transition-all duration-150 mt-6"
+                            :style="userNameInput.trim() ? 'border: 3px solid #1e1e1e; transform: rotate(0.5deg);' : 'border: 3px solid #e5e5e5;'">
+                            <span x-text="t('namePicker.join')"></span> →
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Bottom decorative element -->
+                <div class="flex">
+                    <div class="flex-1 h-3 bg-blue-500"></div>
+                    <div class="flex-1 h-3 bg-yellow-400"></div>
+                    <div class="flex-1 h-3 bg-gray-900"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Whiteboard & Sync Scripts -->
+    <script src="/static/js/whiteboard.js"></script>
+    <script src="/static/js/sync.js"></script>
+
+    <script>
+        // Alpine.js Component
+        function whiteboardApp() {
+            // Default preferences
+            const defaultPrefs = {
+                color: '#1e1e1e',
+                strokeWidth: 2,
+                backgroundColor: '#ffffff',
+                showGrid: true,
+                eraserWidth: 20
+            };
+
+            // Load preferences from localStorage
+            function loadPreferences() {
+                try {
+                    const stored = localStorage.getItem('whiteboardPreferences');
+                    if (stored) {
+                        return { ...defaultPrefs, ...JSON.parse(stored) };
+                    }
+                } catch (e) {
+                    console.warn('Failed to load preferences:', e);
+                }
+                return defaultPrefs;
+            }
+
+            // Save preferences to localStorage
+            function savePreferences(prefs) {
+                try {
+                    localStorage.setItem('whiteboardPreferences', JSON.stringify(prefs));
+                } catch (e) {
+                    console.warn('Failed to save preferences:', e);
+                }
+            }
+
+            const prefs = loadPreferences();
+
+            return {
+                // State
+                whiteboard: null,
+                syncManager: null,
+                tokenId: '{{ token_id }}',
+
+                // Translation helper
+                t(key) {
+                    return i18n.t(key);
+                },
+
+                // UI State (loaded from preferences)
+                viewOnly: {{ 'true' if readonly else 'false' }},
+                mode: 'draw',
+                color: prefs.color,
+                strokeWidth: prefs.strokeWidth,
+                zoom: 1,
+                connected: false,
+                rateLimited: false,
+                toastVisible: false,
+                toastMessage: '',
+                toastTimer: null,
+                loading: true,
+                showGrid: prefs.showGrid,
+                backgroundColor: prefs.backgroundColor,
+                eraserWidth: prefs.eraserWidth,
+
+                toolbarMoreOpen: false,
+                toolbarBgOpen: false,
+
+                // User state
+                userName: '',  // Will be set in init() with sanitization
+                userNameInput: '',
+                userColor: '#3b82f6',
+                remoteUsers: [],
+                userPanelExpanded: true,
+
+                // Suggested rare animal names (translation keys)
+                suggestedNameKeys: [
+                    'axolotl', 'quokka', 'pangolin', 'okapi', 'narwhal',
+                    'kakapo', 'fossa', 'dugong', 'saola', 'tarsier'
+                ],
+
+                // Get translated animal names
+                get suggestedNames() {
+                    return this.suggestedNameKeys.map(key => this.t(`animalNames.${key}`));
+                },
+
+                // Extended color palette (Excalidraw-style)
+                colorPalette: [
+                    // Row 1 - Dark shades
+                    '#1e1e1e', '#e03131', '#2f9e44', '#1971c2', '#9c36b5',
+                    // Row 2 - Medium shades  
+                    '#868e96', '#f08c00', '#0c8599', '#6741d9', '#c2255c',
+                    // Row 3 - Light shades
+                    '#ced4da', '#ffd43b', '#a9e34b', '#66d9e8', '#e599f7',
+                ],
+
+                // Background color options
+                backgroundColors: [
+                    '#ffffff', '#f8f9fa', '#fff5f5', '#f3f0ff', '#e7f5ff',
+                    '#ebfbee', '#fff9db', '#343a40', '#212529', '#0d0d0d',
+                ],
+
+                // Stroke width presets (labels will be translated)
+                strokeWidths: [
+                    { value: 1, size: 4, labelKey: 'toolbar.extraThin' },
+                    { value: 2, size: 6, labelKey: 'toolbar.thin' },
+                    { value: 4, size: 8, labelKey: 'toolbar.medium' },
+                    { value: 8, size: 12, labelKey: 'toolbar.thick' },
+                    { value: 16, size: 16, labelKey: 'toolbar.extraThick' },
+                ],
+
+                // Eraser width presets (labels will be translated)
+                eraserWidths: [
+                    { value: 10, size: 6, labelKey: 'toolbar.small' },
+                    { value: 20, size: 10, labelKey: 'toolbar.medium' },
+                    { value: 40, size: 14, labelKey: 'toolbar.large' },
+                    { value: 80, size: 18, labelKey: 'toolbar.extraLarge' },
+                ],
+
+                // Helper to save current preferences
+                _savePrefs() {
+                    savePreferences({
+                        color: this.color,
+                        strokeWidth: this.strokeWidth,
+                        backgroundColor: this.backgroundColor,
+                        showGrid: this.showGrid,
+                        eraserWidth: this.eraserWidth
+                    });
+                },
+
+                showToast(messageKey) {
+                    this.toastMessage = this.t(messageKey);
+                    this.toastVisible = true;
+                    if (this.toastTimer) {
+                        clearTimeout(this.toastTimer);
+                    }
+                    this.toastTimer = setTimeout(() => {
+                        this.toastVisible = false;
+                    }, 5000);
+                },
+
+                _queryFlag(params, name) {
+                    const v = (params.get(name) || '').trim().toLowerCase();
+                    return v === '1' || v === 'true' || v === 'yes';
+                },
+
+                async init() {
+                    // Set document title based on language
+                    document.title = this.t('appName');
+
+                    const params = new URLSearchParams(window.location.search);
+                    if (this._queryFlag(params, 'readonly')) {
+                        this.viewOnly = true;
+                        document.documentElement.classList.add('tavle-view-only');
+                    }
+
+                    if (this.viewOnly) {
+                        this.mode = 'pan';
+                    }
+
+                    // ``?name=`` from embed hosts (e.g. Studito student workspace)
+                    const urlName = params.get('name');
+                    if (urlName) {
+                        const fromUrl = this.sanitizeUserName(urlName);
+                        if (fromUrl) {
+                            this.userName = fromUrl;
+                            localStorage.setItem('whiteboardUserName', fromUrl);
+                        }
+                    }
+                    if (!this.userName) {
+                        const storedName = localStorage.getItem('whiteboardUserName');
+                        if (storedName) {
+                            this.userName = this.sanitizeUserName(storedName);
+                            if (this.userName !== storedName) {
+                                localStorage.setItem('whiteboardUserName', this.userName);
+                            }
+                        }
+                    }
+
+                    // Wait for perfect-freehand to be loaded
+                    if (typeof getStroke !== 'function') {
+                        await new Promise(resolve => {
+                            window.addEventListener('perfect-freehand-ready', resolve, { once: true });
+                            // Fallback timeout in case event already fired
+                            setTimeout(resolve, 1000);
+                        });
+                    }
+
+                    // If user already has a name saved, start the whiteboard
+                    if (this.userName) {
+                        await this.startWhiteboard();
+                    }
+
+                },
+
+                toggleToolbarMore() {
+                    this.toolbarMoreOpen = !this.toolbarMoreOpen;
+                    if (!this.toolbarMoreOpen) {
+                        this.toolbarBgOpen = false;
+                    }
+                },
+
+                closeToolbarMore() {
+                    this.toolbarMoreOpen = false;
+                    this.toolbarBgOpen = false;
+                },
+
+                async startWhiteboard() {
+                    // Guard against accidental double-initialization.
+                    // This can happen during dev (Flask debug reloader / hot reload) or if Alpine is started twice.
+                    if (this._initialized) return;
+                    this._initialized = true;
+
+                    // Initialize Whiteboard with saved preferences
+                    this.whiteboard = new Whiteboard(
+                        this.$refs.baseCanvas,
+                        this.$refs.activeCanvas,
+                        {
+                            color: this.color,
+                            strokeWidth: this.strokeWidth,
+                            viewOnly: this.viewOnly,
+                        }
+                    );
+                    if (this.viewOnly) {
+                        this.mode = 'pan';
+                        this.whiteboard._updateCursor();
+                    }
+
+                    // Apply additional saved preferences
+                    this.whiteboard.setBackgroundColor(this.backgroundColor);
+                    this.whiteboard.setShowGrid(this.showGrid);
+                    this.whiteboard.setEraserWidth(this.eraserWidth);
+
+                    // Initialize SyncManager with user info
+                    this.syncManager = new SyncManager(this.whiteboard, this.tokenId, {
+                        userName: this.userName,
+                        viewOnly: this.viewOnly,
+                    });
+
+                    // Listen for connection state changes
+                    this.syncManager.onConnectionChange((connected) => {
+                        this.connected = connected;
+                    });
+
+                    // Listen for rate limit state changes
+                    this.syncManager.onRateLimitChange((rateLimited) => {
+                        this.rateLimited = rateLimited;
+                    });
+
+                    this.syncManager.onError((messageKey) => {
+                        this.showToast(messageKey);
+                    });
+
+                    // Get user color from whiteboard
+                    this.userColor = this.whiteboard.localUserColor;
+
+                    // Update remote users list periodically
+                    setInterval(() => {
+                        if (this.whiteboard) {
+                            this.remoteUsers = this.whiteboard.getRemoteUsers();
+                        }
+                    }, 500);
+
+                    // Watch for zoom changes
+                    const updateZoom = () => {
+                        // If init ran twice somehow, the first loop will still be running.
+                        // Bail out so only the most recent init keeps a zoom watcher.
+                        if (!this._initialized) return;
+                        this.zoom = this.whiteboard.zoom;
+                        this._zoomRafId = requestAnimationFrame(updateZoom);
+                    };
+                    updateZoom();
+
+                    try {
+                        // Connect to socket
+                        await this.syncManager.connect();
+
+                        // Load existing strokes
+                        await this.syncManager.loadDocument();
+                    } catch (error) {
+                        console.error('Failed to initialize:', error);
+                    }
+
+                    this.loading = false;
+
+                    // Keyboard shortcuts
+                    document.addEventListener('keydown', (e) => {
+                        if (this.viewOnly) {
+                            if (e.target.tagName === 'INPUT') return;
+                            if (e.code === 'Space') {
+                                e.preventDefault();
+                            }
+                            return;
+                        }
+                        if (e.target.tagName === 'INPUT') return;
+                        if (e.key === 'd' || e.key === 'D') this.setMode('draw');
+                        if (e.key === 'e' || e.key === 'E') this.setMode('erase');
+                        if (e.key === 'v' || e.key === 'V') this.setMode('select');
+                        if (e.key === 'h' || e.key === 'H') this.setMode('pan');
+                        if (e.key === 'g' || e.key === 'G') this.toggleGrid();
+                    });
+                },
+
+                setMode(mode) {
+                    if (this.viewOnly) {
+                        return;
+                    }
+                    this.mode = mode;
+                    this.whiteboard.setMode(mode);
+                },
+
+                setColor(color) {
+                    this.color = color;
+                    this.whiteboard.setColor(color);
+                    this._savePrefs();
+                },
+
+                setStrokeWidth(width) {
+                    this.strokeWidth = parseInt(width);
+                    this.whiteboard.setStrokeWidth(this.strokeWidth);
+                    this._savePrefs();
+                },
+
+                setBackgroundColor(color) {
+                    this.backgroundColor = color;
+                    if (this.whiteboard) {
+                        this.whiteboard.setBackgroundColor(color);
+                    }
+                    this._savePrefs();
+                },
+
+                setEraserWidth(width) {
+                    this.eraserWidth = parseInt(width);
+                    if (this.whiteboard) {
+                        this.whiteboard.setEraserWidth(this.eraserWidth);
+                    }
+                    this._savePrefs();
+                },
+
+                toggleGrid() {
+                    this.showGrid = !this.showGrid;
+                    if (this.whiteboard) {
+                        this.whiteboard.setShowGrid(this.showGrid);
+                    }
+                    this._savePrefs();
+                },
+
+                zoomIn() {
+                    this.whiteboard.zoomIn();
+                    this.zoom = this.whiteboard.zoom;
+                },
+
+                zoomOut() {
+                    this.whiteboard.zoomOut();
+                    this.zoom = this.whiteboard.zoom;
+                },
+
+                resetZoom() {
+                    this.whiteboard.resetZoom();
+                    this.zoom = this.whiteboard.zoom;
+                },
+
+                async clearCanvas() {
+                    if (confirm(this.t('confirm.clearCanvas'))) {
+                        this.whiteboard.clear();
+                        await this.syncManager.clearDocument();
+                    }
+                },
+
+                uploadImage(event) {
+                    const file = event.target.files[0];
+                    if (file && file.type.startsWith('image/')) {
+                        this.whiteboard.addImageFromFile(file);
+                    } else if (file) {
+                        this.showToast('errors.imageUploadFailed');
+                    }
+                    // Reset input so the same file can be selected again
+                    event.target.value = '';
+                },
+
+                exportImage() {
+                    this.whiteboard.exportAsImage();
+                },
+
+                // Sanitize user name to prevent XSS (defense in depth)
+                sanitizeUserName(name) {
+                    if (!name) return '';
+                    // Remove HTML-like content and control characters
+                    return name
+                        .replace(/[<>]/g, '')           // Remove angle brackets
+                        .replace(/[^\x20-\x7E\u00A0-\uFFFF]/g, '') // Only printable chars
+                        .trim()
+                        .substring(0, 50);              // Max 50 characters
+                },
+
+                async setUserName() {
+                    let name = this.userNameInput.trim();
+                    if (!name) return;
+                    
+                    // Sanitize the name
+                    name = this.sanitizeUserName(name);
+                    if (!name) return;
+                    
+                    this.userName = name;
+                    this.userNameInput = '';
+                    localStorage.setItem('whiteboardUserName', name);
+                    
+                    // If whiteboard is already initialized, just update the name
+                    if (this.syncManager) {
+                        this.syncManager.setUserName(name);
+                    } else {
+                        // Start the whiteboard now that we have a name
+                        await this.startWhiteboard();
+                    }
+                },
+
+                toggleUserPanel() {
+                    this.userPanelExpanded = !this.userPanelExpanded;
+                },
+
+                editUserName() {
+                    // Clear stored name and show the name entry modal
+                    this.userNameInput = this.userName;
+                    this.userName = '';
+                    localStorage.removeItem('whiteboardUserName');
+                },
+
+                jumpToUser(userId) {
+                    if (this.whiteboard.jumpToUser(userId)) {
+                        this.zoom = this.whiteboard.zoom;
+                    }
+                }
+            };
+        }
+    </script>
+{% endblock %}
