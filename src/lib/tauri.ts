@@ -17,6 +17,17 @@ export async function tavleNeedsSetup(): Promise<boolean> {
   return invoke("tavle_needs_setup");
 }
 
+export async function fetchSetupToken(baseUrl: string): Promise<string> {
+  return invoke("fetch_setup_token", { baseUrl });
+}
+
+export async function completeTavleSetup(
+  baseUrl: string,
+  token: string,
+): Promise<void> {
+  return invoke("complete_tavle_setup", { baseUrl, token });
+}
+
 export async function importAdminTokenFromTavle(): Promise<string | null> {
   return invoke("import_admin_token_from_tavle");
 }

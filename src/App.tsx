@@ -72,17 +72,23 @@ function App() {
   }, [bootstrap]);
 
   async function handleSetupComplete() {
-    await importAdminTokenFromTavle();
-    const stillNeeds = await tavleNeedsSetup();
-    if (stillNeeds) {
-      setError("Setup not detected yet. Finish the wizard or paste the token in Settings.");
-      setSettingsOpen(true);
-      return;
-    }
-    await syncBoardsFromApi();
-    await refreshLibrary();
-    setPhase("ready");
+    setPhase("loading");
     setError("");
+    try {
+      try {
+        await stopTavle();
+      } catch {
+        /* not running */
+      }
+      const st = await startTavle();
+      setStatus(st);
+      await syncBoardsFromApi();
+      await refreshLibrary();
+      setPhase("ready");
+    } catch (e) {
+      setError(String(e));
+      setPhase("setup");
+    }
   }
 
   async function handleCreateBoard() {

@@ -1,28 +1,125 @@
+import { useCallback, useEffect, useState } from "react";
+import { completeTavleSetup, fetchSetupToken } from "../lib/tauri";
+
 interface SetupViewProps {
   baseUrl: string;
   onComplete: () => void;
 }
 
 export function SetupView({ baseUrl, onComplete }: SetupViewProps) {
-  const setupUrl = `${baseUrl.replace(/\/$/, "")}/`;
+  const [token, setToken] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const loadToken = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const t = await fetchSetupToken(baseUrl);
+      setToken(t);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [baseUrl]);
+
+  useEffect(() => {
+    loadToken();
+  }, [loadToken]);
+
+  async function handleCopy() {
+    if (!token) return;
+    try {
+      await navigator.clipboard.writeText(token);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError("Could not copy to clipboard.");
+    }
+  }
+
+  async function handleComplete() {
+    if (!token || !confirmed) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      await completeTavleSetup(baseUrl, token);
+      onComplete();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
-    <div className="setup-view">
-      <div className="setup-panel">
+    <div className="setup-view native-setup">
+      <div className="setup-panel setup-panel-wide">
         <h2>First-time Tavle setup</h2>
         <p>
-          Complete the Tavle setup wizard below. When finished, click
-          &quot;I&apos;ve completed setup&quot; to import your admin API token.
+          Save your admin API token below. Tavle App uses it to list and create
+          boards. The token is stored in your system keychain.
         </p>
-        <button type="button" className="btn primary" onClick={onComplete}>
-          I&apos;ve completed setup
-        </button>
+
+        {loading && <p className="setup-status">Loading token from Tavle…</p>}
+
+        {error && (
+          <div className="setup-error">
+            <p>{error}</p>
+            <button type="button" className="btn" onClick={loadToken}>
+              Retry
+            </button>
+          </div>
+        )}
+
+        {!loading && token && (
+          <>
+            <label htmlFor="setup-token" className="setup-label">
+              Admin API token
+            </label>
+            <div className="token-row">
+              <input
+                id="setup-token"
+                type="text"
+                readOnly
+                value={token}
+                className="token-input"
+              />
+              <button type="button" className="btn" onClick={handleCopy}>
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+
+            <ul className="setup-security-list">
+              <li>Store this token somewhere safe — it grants full API access.</li>
+              <li>Do not share it or commit it to git.</li>
+              <li>You can paste it again later in Settings if needed.</li>
+            </ul>
+
+            <label className="setup-confirm">
+              <input
+                type="checkbox"
+                checked={confirmed}
+                onChange={(e) => setConfirmed(e.target.checked)}
+              />
+              I have saved this token
+            </label>
+
+            <button
+              type="button"
+              className="btn primary"
+              disabled={!confirmed || submitting}
+              onClick={handleComplete}
+            >
+              {submitting ? "Finishing setup…" : "Continue to Tavle App"}
+            </button>
+          </>
+        )}
       </div>
-      <iframe
-        className="setup-frame"
-        title="Tavle setup"
-        src={setupUrl}
-      />
     </div>
   );
 }

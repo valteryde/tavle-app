@@ -66,11 +66,13 @@ fn pick_port(preferred: u16) -> u16 {
 }
 
 fn embed_ancestors() -> String {
+    // Parent webview origins (Tauri dev + production) must be listed for board iframes.
     [
         "http://localhost:1420",
         "http://127.0.0.1:1420",
         "http://tauri.localhost",
         "https://tauri.localhost",
+        "tauri://localhost",
     ]
     .join(",")
 }

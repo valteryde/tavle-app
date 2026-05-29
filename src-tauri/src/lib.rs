@@ -3,6 +3,7 @@ mod secrets;
 mod state;
 mod tavle_fetch;
 mod tavle_process;
+mod tavle_setup;
 
 use state::TavleProcessState;
 use std::sync::Mutex;
@@ -27,6 +28,16 @@ fn tavle_status(state: tauri::State<'_, TavleProcessState>) -> serde_json::Value
 fn tavle_needs_setup(app: tauri::AppHandle) -> Result<bool, String> {
     let paths = tavle_process::resolve_base_paths(&app)?;
     tavle_process::tavle_needs_setup(&paths)
+}
+
+#[tauri::command]
+fn fetch_setup_token(base_url: String) -> Result<String, String> {
+    tavle_setup::fetch_setup_token(&base_url)
+}
+
+#[tauri::command]
+fn complete_tavle_setup(base_url: String, token: String) -> Result<(), String> {
+    tavle_setup::complete_tavle_setup(&base_url, &token)
 }
 
 #[tauri::command]
@@ -216,6 +227,8 @@ pub fn run() {
             stop_tavle,
             tavle_status,
             tavle_needs_setup,
+            fetch_setup_token,
+            complete_tavle_setup,
             import_admin_token_from_tavle,
             get_admin_token,
             set_admin_token,
