@@ -1,6 +1,7 @@
 mod metadata;
 mod secrets;
 mod state;
+mod tavle_fetch;
 mod tavle_process;
 
 use state::TavleProcessState;
@@ -24,13 +25,13 @@ fn tavle_status(state: tauri::State<'_, TavleProcessState>) -> serde_json::Value
 
 #[tauri::command]
 fn tavle_needs_setup(app: tauri::AppHandle) -> Result<bool, String> {
-    let paths = tavle_process::resolve_paths(&app)?;
+    let paths = tavle_process::resolve_base_paths(&app)?;
     tavle_process::tavle_needs_setup(&paths)
 }
 
 #[tauri::command]
 fn import_admin_token_from_tavle(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    let paths = tavle_process::resolve_paths(&app)?;
+    let paths = tavle_process::resolve_base_paths(&app)?;
     tavle_process::import_admin_token_from_tavle(&paths)
 }
 
@@ -51,7 +52,7 @@ fn clear_admin_token() -> Result<(), String> {
 
 #[tauri::command]
 fn list_groups(app: tauri::AppHandle) -> Result<Vec<metadata::Group>, String> {
-    let paths = tavle_process::resolve_paths(&app)?;
+    let paths = tavle_process::resolve_base_paths(&app)?;
     metadata::list_groups(&paths)
 }
 
@@ -61,25 +62,25 @@ fn create_group(
     name: String,
     parent_id: Option<String>,
 ) -> Result<metadata::Group, String> {
-    let paths = tavle_process::resolve_paths(&app)?;
+    let paths = tavle_process::resolve_base_paths(&app)?;
     metadata::create_group(&paths, name, parent_id)
 }
 
 #[tauri::command]
 fn rename_group(app: tauri::AppHandle, id: String, name: String) -> Result<(), String> {
-    let paths = tavle_process::resolve_paths(&app)?;
+    let paths = tavle_process::resolve_base_paths(&app)?;
     metadata::rename_group(&paths, id, name)
 }
 
 #[tauri::command]
 fn delete_group(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    let paths = tavle_process::resolve_paths(&app)?;
+    let paths = tavle_process::resolve_base_paths(&app)?;
     metadata::delete_group(&paths, id)
 }
 
 #[tauri::command]
 fn list_board_links(app: tauri::AppHandle) -> Result<Vec<metadata::BoardLink>, String> {
-    let paths = tavle_process::resolve_paths(&app)?;
+    let paths = tavle_process::resolve_base_paths(&app)?;
     metadata::list_board_links(&paths)
 }
 
@@ -89,7 +90,7 @@ fn move_board(
     board_link_id: String,
     group_id: Option<String>,
 ) -> Result<(), String> {
-    let paths = tavle_process::resolve_paths(&app)?;
+    let paths = tavle_process::resolve_base_paths(&app)?;
     metadata::move_board(&paths, board_link_id, group_id)
 }
 
@@ -102,7 +103,7 @@ fn update_board_meta(
     tags: Option<String>,
     pinned: Option<bool>,
 ) -> Result<metadata::BoardLink, String> {
-    let paths = tavle_process::resolve_paths(&app)?;
+    let paths = tavle_process::resolve_base_paths(&app)?;
     metadata::update_board_meta(
         &paths,
         board_link_id,
@@ -115,7 +116,7 @@ fn update_board_meta(
 
 #[tauri::command]
 fn touch_board_opened(app: tauri::AppHandle, board_link_id: String) -> Result<(), String> {
-    let paths = tavle_process::resolve_paths(&app)?;
+    let paths = tavle_process::resolve_base_paths(&app)?;
     metadata::touch_board_opened(&paths, board_link_id)
 }
 
@@ -160,24 +161,44 @@ fn delete_board(
 
 #[tauri::command]
 fn get_setting(app: tauri::AppHandle, key: String) -> Result<Option<String>, String> {
-    let paths = tavle_process::resolve_paths(&app)?;
+    let paths = tavle_process::resolve_base_paths(&app)?;
     metadata::get_setting(&paths, key)
 }
 
 #[tauri::command]
 fn set_setting(app: tauri::AppHandle, key: String, value: String) -> Result<(), String> {
-    let paths = tavle_process::resolve_paths(&app)?;
+    let paths = tavle_process::resolve_base_paths(&app)?;
     metadata::set_setting(&paths, key, value)
 }
 
 #[tauri::command]
+fn tavle_source_status(app: tauri::AppHandle) -> Result<tavle_fetch::TavleSourceInfo, String> {
+    let paths = tavle_process::resolve_base_paths(&app)?;
+    tavle_fetch::source_info(&paths)
+}
+
+#[tauri::command]
+fn fetch_tavle_source(
+    app: tauri::AppHandle,
+    repo: Option<String>,
+    git_ref: Option<String>,
+    force: Option<bool>,
+) -> Result<tavle_fetch::TavleSourceInfo, String> {
+    let paths = tavle_process::resolve_base_paths(&app)?;
+    let repo = repo.unwrap_or_else(|| tavle_fetch::DEFAULT_TAVLE_REPO.to_string());
+    let git_ref = git_ref.unwrap_or_else(|| tavle_fetch::DEFAULT_TAVLE_REF.to_string());
+    tavle_fetch::fetch_tavle_source(&paths, &repo, &git_ref, force.unwrap_or(false))
+}
+
+#[tauri::command]
 fn get_app_paths(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
-    let paths = tavle_process::resolve_paths(&app)?;
+    let paths = tavle_process::resolve_base_paths(&app)?;
+    let source = tavle_fetch::source_info(&paths)?;
     Ok(serde_json::json!({
         "app_data_dir": paths.app_data_dir,
         "tavle_data_dir": paths.tavle_data_dir,
         "metadata_db": paths.metadata_db,
-        "vendor_tavle_dir": paths.vendor_tavle_dir,
+        "tavle_source": source,
     }))
 }
 
@@ -213,6 +234,8 @@ pub fn run() {
             get_setting,
             set_setting,
             get_app_paths,
+            tavle_source_status,
+            fetch_tavle_source,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

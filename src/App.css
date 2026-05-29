@@ -216,6 +216,13 @@ body {
   border-color: #fecaca;
 }
 
+.loading-hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+  max-width: 22rem;
+  text-align: center;
+}
+
 .error-text {
   color: var(--danger);
   max-width: 28rem;
@@ -312,6 +319,12 @@ body {
   padding: 0.5rem;
   overflow-x: auto;
   border-radius: 4px;
+}
+
+.settings-note {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0 0 0.5rem;
 }
 
 .settings-message {

@@ -100,6 +100,30 @@ export async function deleteBoard(
   return invoke("delete_board", { tavleBoardId, boardLinkId });
 }
 
-export async function getAppPaths(): Promise<Record<string, string>> {
+export async function getAppPaths(): Promise<Record<string, unknown>> {
   return invoke("get_app_paths");
+}
+
+export interface TavleSourceInfo {
+  repo: string;
+  git_ref: string;
+  path: string;
+  installed: boolean;
+  fetched_at: string | null;
+}
+
+export async function tavleSourceStatus(): Promise<TavleSourceInfo> {
+  return invoke("tavle_source_status");
+}
+
+export async function fetchTavleSource(options?: {
+  repo?: string;
+  gitRef?: string;
+  force?: boolean;
+}): Promise<TavleSourceInfo> {
+  return invoke("fetch_tavle_source", {
+    repo: options?.repo ?? null,
+    gitRef: options?.gitRef ?? null,
+    force: options?.force ?? false,
+  });
 }

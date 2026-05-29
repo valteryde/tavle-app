@@ -1,9 +1,11 @@
 import { useState } from "react";
 import {
   clearAdminToken,
+  fetchTavleSource,
   getAppPaths,
   setAdminToken,
   syncBoardsFromApi,
+  tavleSourceStatus,
 } from "../lib/tauri";
 
 interface SettingsModalProps {
@@ -14,7 +16,7 @@ interface SettingsModalProps {
 
 export function SettingsModal({ open, onClose, onTokenSaved }: SettingsModalProps) {
   const [token, setToken] = useState("");
-  const [paths, setPaths] = useState<Record<string, string> | null>(null);
+  const [paths, setPaths] = useState<Record<string, unknown> | null>(null);
   const [message, setMessage] = useState("");
 
   if (!open) return null;
@@ -29,6 +31,26 @@ export function SettingsModal({ open, onClose, onTokenSaved }: SettingsModalProp
     await setAdminToken(token.trim());
     setMessage("Token saved to keychain.");
     onTokenSaved();
+  }
+
+  async function handleRedownloadTavle() {
+    try {
+      setMessage("Downloading Tavle from GitHub…");
+      const info = await fetchTavleSource({ force: true });
+      setMessage(`Tavle ${info.git_ref} installed at ${info.path}`);
+      onTokenSaved();
+    } catch (e) {
+      setMessage(String(e));
+    }
+  }
+
+  async function handleShowSource() {
+    const info = await tavleSourceStatus();
+    setMessage(
+      info.installed
+        ? `Tavle ${info.repo}@${info.git_ref} at ${info.path}`
+        : "Tavle source not installed yet.",
+    );
   }
 
   async function handleSync() {
@@ -70,6 +92,20 @@ export function SettingsModal({ open, onClose, onTokenSaved }: SettingsModalProp
             </button>
             <button type="button" className="btn" onClick={() => clearAdminToken()}>
               Clear token
+            </button>
+          </div>
+        </section>
+
+        <section className="modal-section">
+          <p className="settings-note">
+            Tavle is downloaded on first launch from GitHub into app data (not stored in this repo).
+          </p>
+          <div className="modal-actions">
+            <button type="button" className="btn" onClick={handleShowSource}>
+              Tavle source status
+            </button>
+            <button type="button" className="btn" onClick={handleRedownloadTavle}>
+              Re-download Tavle
             </button>
           </div>
         </section>

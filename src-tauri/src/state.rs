@@ -12,5 +12,5 @@ pub struct AppPaths {
     pub app_data_dir: PathBuf,
     pub tavle_data_dir: PathBuf,
     pub metadata_db: PathBuf,
-    pub vendor_tavle_dir: PathBuf,
+    pub tavle_source_dir: PathBuf,
 }

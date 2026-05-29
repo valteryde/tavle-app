@@ -1,8 +1,9 @@
 use crate::secrets;
 use crate::state::{AppPaths, TavleProcessState};
+use crate::tavle_fetch;
 use std::fs;
 use std::net::TcpListener;
-use std::path::Path;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use tauri::Manager;
@@ -10,7 +11,7 @@ use tauri::Manager;
 const DEFAULT_PORT: u16 = 5050;
 const HEALTH_TIMEOUT_SECS: u64 = 60;
 
-pub fn resolve_paths(app: &tauri::AppHandle) -> Result<AppPaths, String> {
+pub fn resolve_base_paths(app: &tauri::AppHandle) -> Result<AppPaths, String> {
     let app_data_dir = app
         .path()
         .app_data_dir()
@@ -22,31 +23,23 @@ pub fn resolve_paths(app: &tauri::AppHandle) -> Result<AppPaths, String> {
 
     let metadata_db = app_data_dir.join("metadata.db");
 
-    let vendor_tavle_dir = resolve_vendor_dir(app)?;
-
     Ok(AppPaths {
         app_data_dir,
         tavle_data_dir,
         metadata_db,
-        vendor_tavle_dir,
+        tavle_source_dir: PathBuf::new(),
     })
 }
 
-fn resolve_vendor_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-    if let Ok(resource) = app.path().resource_dir() {
-        let bundled = resource.join("vendor/tavle");
-        if bundled.join("server.py").exists() {
-            return Ok(bundled);
-        }
-    }
-
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let dev_vendor = manifest.join("../../vendor/tavle");
-    if dev_vendor.join("server.py").exists() {
-        return Ok(dev_vendor.canonicalize().unwrap_or(dev_vendor));
-    }
-
-    Err("Tavle vendor directory not found. Run from project root with vendor/tavle present.".into())
+/// Resolves paths and ensures Tavle source is downloaded (or uses a local override).
+pub fn resolve_paths(app: &tauri::AppHandle) -> Result<AppPaths, String> {
+    let mut paths = resolve_base_paths(app)?;
+    paths.tavle_source_dir = if let Some(local) = tavle_fetch::resolve_local_override() {
+        local
+    } else {
+        tavle_fetch::ensure_tavle_source(&paths)?
+    };
+    Ok(paths)
 }
 
 fn resolve_sidecar(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
@@ -132,7 +125,7 @@ pub fn start_tavle(
         for (k, v) in &env_pairs {
             cmd.env(k, v);
         }
-        cmd.current_dir(&paths.vendor_tavle_dir)
+        cmd.current_dir(&paths.tavle_source_dir)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -141,7 +134,7 @@ pub fn start_tavle(
         let python = which_python();
         let mut cmd = Command::new(&python);
         cmd.arg("server.py")
-            .current_dir(&paths.vendor_tavle_dir)
+            .current_dir(&paths.tavle_source_dir)
             .stdout(Stdio::null())
             .stderr(Stdio::null());
         for (k, v) in &env_pairs {

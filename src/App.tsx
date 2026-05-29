@@ -124,7 +124,8 @@ function App() {
   if (phase === "loading") {
     return (
       <div className="app-shell center">
-        <p>Starting Tavle…</p>
+        <p>Downloading Tavle (first run) or starting server…</p>
+        <p className="loading-hint">Source is fetched from GitHub into app data, not bundled in the app.</p>
       </div>
     );
   }

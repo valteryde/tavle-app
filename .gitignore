@@ -23,11 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 
-/vendor/tavle/__pycache__
-/vendor/tavle/logs
-/vendor/tavle/whiteboard.db
-/vendor/tavle/*.db
-/vendor/tavle/build
-/vendor/tavle/dist
+# Optional local Tavle clone for dev (lazy-loaded in production)
+/vendor/tavle/
 /src-tauri/binaries/tavle-server
 /src-tauri/binaries/tavle-server.exe

@@ -69,7 +69,7 @@ jobs:
             - Linux: `.deb`, `.AppImage`
             - Windows: `.msi` / NSIS
 
-            **Runtime note:** The app bundles Tavle source and starts it with system Python 3.11 or 3.12 if no PyInstaller sidecar is present. Install Python and run `npm run setup:tavle` deps on first use, or build the sidecar with `npm run build:sidecar` before release.
+            **Runtime note:** On first launch the app downloads Tavle from GitHub into app data and requires Python 3.11 or 3.12. Network access is needed for the initial download.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
